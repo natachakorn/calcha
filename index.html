@@ -91,17 +91,12 @@
       </div>
 
       <div class="ob-step" data-step="4">
-        <h2>เชื่อมต่อ AI วิเคราะห์อาหาร</h2>
-        <p class="muted">CalCha ใช้ <b>Google Gemini</b> (ใช้ฟรี) ในการดูรูปอาหาร ขอ API Key ได้ฟรีภายใน 1 นาที</p>
-        <ol class="howto">
-          <li>เปิด <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></li>
-          <li>ล็อกอินด้วยบัญชี Google แล้วกด <b>Create API key</b></li>
-          <li>คัดลอกคีย์มาวางด้านล่าง</li>
-        </ol>
-        <input id="obKey" class="text-input" type="password" placeholder="วาง API Key (AIza...)" autocomplete="off">
-        <p class="tiny muted">คีย์ถูกเก็บไว้ในเครื่องนี้เท่านั้น</p>
-        <button class="btn primary block ob-next">ถัดไป</button>
-        <button class="btn ghost block ob-skip">ข้ามไปก่อน (ใส่ทีหลังได้)</button>
+        <h2>เชื่อมต่อ AI ดูรูปอาหาร</h2>
+        <p class="muted">ใช้ <b>Google Gemini</b> ฟรี แค่มีบัญชี Google — ใช้เวลาไม่ถึง 1 นาที</p>
+        <div id="obKeyBox"></div>
+        <p class="tiny muted">ไม่ใส่ก็ใช้งานได้ โดยเลือกเมนูจากรายการอาหารไทยในแอป (180+ เมนู)</p>
+        <button class="btn primary block ob-next" id="obKeyNext" hidden>ถัดไป</button>
+        <button class="btn plain block ob-skip">ข้ามไปก่อน (ใส่ทีหลังได้)</button>
       </div>
 
       <div class="ob-step" data-step="5">
@@ -156,7 +151,7 @@
         <div class="actions">
           <button class="action cam" id="btnCamera"><span class="ico">📷</span>ถ่ายรูป</button>
           <button class="action gal" id="btnGallery"><span class="ico">🖼️</span>เลือกรูป</button>
-          <button class="action txt" id="btnText"><span class="ico">✏️</span>พิมพ์เมนู</button>
+          <button class="action txt" id="btnText"><span class="ico">🔍</span>ค้นหาเมนู</button>
         </div>
         <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
         <input type="file" id="fileGallery" accept="image/*" hidden>
@@ -220,8 +215,10 @@
 
         <div class="card form">
           <h3>🤖 ตั้งค่า AI</h3>
-          <p class="small muted">ใช้ Google Gemini API (ฟรี) — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">ขอ API Key</a></p>
-          <input id="pfKey" class="text-input" type="password" placeholder="Gemini API Key" autocomplete="off">
+          <p class="small" id="aiStatus"></p>
+          <div id="pfKeyBox"></div>
+          <details class="custom">
+            <summary>ตั้งค่าขั้นสูง</summary>
           <label class="lbl">โมเดล</label>
           <select id="pfModel" class="text-input">
             <option value="gemini-flash-latest">gemini-flash-latest (แนะนำ · รุ่นล่าสุดเสมอ)</option>
@@ -229,10 +226,8 @@
             <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (เร็ว, โควต้าเยอะกว่า)</option>
             <option value="gemini-2.0-flash">gemini-2.0-flash</option>
           </select>
-          <div class="row-btns">
-            <button class="btn ghost" id="pfTestKey">ทดสอบการเชื่อมต่อ</button>
-            <button class="btn primary" id="pfSaveKey">บันทึก</button>
-          </div>
+            <button class="btn danger block" id="pfRemoveKey">ลบคีย์ของฉันออก</button>
+          </details>
         </div>
 
         <div class="card form">
@@ -260,6 +255,8 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
+  <script src="config.js"></script>
+  <script src="foods.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

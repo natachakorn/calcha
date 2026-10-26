@@ -210,8 +210,6 @@ const SCHEMA = {
 };
 
 function buildPrompt(kind, text) {
-  const t = targets();
-  const eaten = totalsFor(dateKey());
   const src = kind === 'photo'
     ? 'วิเคราะห์อาหารในรูปนี้'
     : `วิเคราะห์อาหารจากคำบรรยายนี้: "${text}"`;
@@ -222,6 +220,15 @@ function buildPrompt(kind, text) {
 - ให้ค่าแคลอรี่ (kcal) โปรตีน คาร์บ ไขมัน (กรัม) ของทั้งมื้อ ตัวเลขต้องสมเหตุสมผลและผลรวม items ต้องเท่ากับ total
 - ถ้าไม่ใช่อาหารหรือเครื่องดื่ม ให้ is_food=false และใส่ค่าเป็น 0
 - ชื่ออาหารและคำแนะนำเป็นภาษาไทย
+${userContext()}`;
+}
+
+// Today's targets and intake so the AI can tailor its tip (absent during onboarding).
+function userContext() {
+  if (!state.profile) return '';
+  const t = targets();
+  const eaten = totalsFor(dateKey());
+  return `
 - ข้อมูลผู้ใช้: เป้าหมายวันนี้ ${t.cal} kcal, โปรตีน ${t.pro} g, กินไปแล้ว ${Math.round(eaten.kcal)} kcal, โปรตีน ${Math.round(eaten.protein)} g
   ใช้ข้อมูลนี้ให้ tip ที่เป็นประโยชน์ (เช่น ควรเพิ่มโปรตีน หรือมื้อนี้ค่อนข้างหนัก)`;
 }
@@ -230,22 +237,32 @@ class AIError extends Error {
   constructor(msg, code) { super(msg); this.code = code; }
 }
 
-async function callGemini(parts) {
-  const key = state.settings.apiKey;
-  if (!key) throw new AIError('ยังไม่ได้ใส่ API Key', 'nokey');
+const PROXY_URL = (window.CALCHA_CONFIG && window.CALCHA_CONFIG.proxyUrl) || '';
+// AI works if the user has their own key, or the app is deployed with a shared-key proxy.
+const aiAvailable = () => !!(state.settings.apiKey || PROXY_URL);
+const KEY_RE = /^AIza[0-9A-Za-z_-]{30,}$/;
+
+// opts.key forces a specific key (used to test a key before saving it).
+async function callGemini(parts, opts = {}) {
+  const key = opts.key || state.settings.apiKey;
+  const viaProxy = !key && PROXY_URL;
+  if (!key && !viaProxy) throw new AIError('ยังไม่ได้เชื่อมต่อ AI', 'nokey');
   const models = [...new Set([state.settings.model, ...FALLBACK_MODELS])];
   let lastErr;
   for (const model of models) {
+    const request = {
+      contents: [{ role: 'user', parts }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
+    };
     let r;
     try {
-      r = await fetch(GEMINI_URL(model), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts }],
-          generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
-        }),
-      });
+      r = viaProxy
+        ? await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, request }) })
+        : await fetch(GEMINI_URL(model), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(request),
+        });
     } catch {
       throw new AIError('เชื่อมต่ออินเทอร์เน็ตไม่ได้ ลองใหม่อีกครั้ง', 'network');
     }
@@ -257,12 +274,70 @@ async function callGemini(parts) {
     }
     const msg = body.error?.message || r.statusText;
     if (r.status === 404 || (r.status === 400 && /model/i.test(msg) && !/key/i.test(msg))) { lastErr = new AIError(msg, 'model'); continue; }
-    if (r.status === 400 && /api key/i.test(msg) || r.status === 403) throw new AIError('API Key ไม่ถูกต้อง กรุณาตรวจสอบในหน้า "ข้อมูลฉัน"', 'badkey');
-    if (r.status === 429) throw new AIError('ใช้ AI ฟรีครบโควต้าแล้วชั่วคราว รอสักครู่แล้วลองใหม่ หรือเปลี่ยนโมเดลเป็น flash-lite', 'quota');
-    if (r.status === 503 || r.status === 500) { lastErr = new AIError('เซิร์ฟเวอร์ AI ไม่ว่าง ลองใหม่อีกครั้ง', 'busy'); continue; }
+    if (r.status === 400 && /api key/i.test(msg) || r.status === 403) {
+      throw viaProxy
+        ? new AIError('AI ส่วนกลางของแอปใช้งานไม่ได้ตอนนี้ ใส่คีย์ของคุณเองได้ในหน้า "ข้อมูลฉัน"', 'proxy')
+        : new AIError('API Key ไม่ถูกต้อง กรุณาตรวจสอบในหน้า "ข้อมูลฉัน"', 'badkey');
+    }
+    if (r.status === 429) {
+      throw viaProxy
+        ? new AIError('AI ส่วนกลางมีคนใช้เยอะ โควต้าเต็มชั่วคราว ลองใหม่ภายหลัง หรือใส่คีย์ฟรีของคุณเองได้ในหน้า "ข้อมูลฉัน" (ไม่ถึง 1 นาที)', 'quota')
+        : new AIError('ใช้ AI ฟรีครบโควต้าแล้วชั่วคราว รอสักครู่แล้วลองใหม่ หรือเปลี่ยนโมเดลเป็น flash-lite', 'quota');
+    }
+    if (r.status === 503 || r.status === 500 || r.status === 502) { lastErr = new AIError('เซิร์ฟเวอร์ AI ไม่ว่าง ลองใหม่อีกครั้ง', 'busy'); continue; }
     throw new AIError(msg, 'other');
   }
   throw lastErr || new AIError('ไม่พบโมเดลที่ใช้งานได้', 'model');
+}
+
+// ---------------- easy key setup ----------------
+// Renders: open-Google button → paste button (reads clipboard) → auto test → saved.
+function keyBox(el, onValid) {
+  el.innerHTML = `
+    <div class="keybox">
+      <a class="kb-step" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
+        <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดคัดลอก</small></span><span class="kb-go">↗</span>
+      </a>
+      <button type="button" class="kb-step kb-paste">
+        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบให้อัตโนมัติ</small></span><span class="kb-go">📋</span>
+      </button>
+      <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้ (AIza…)" autocomplete="off" spellcheck="false">
+      <p class="kb-status small" aria-live="polite"></p>
+    </div>`;
+  const input = $('.kb-input', el), status = $('.kb-status', el);
+  const setStatus = (cls, txt) => { status.className = 'kb-status small ' + cls; status.textContent = txt; };
+  let busy = false;
+  async function check(raw) {
+    const key = (raw || '').trim().replace(/^["']|["']$/g, '');
+    if (!key || busy) return;
+    if (!KEY_RE.test(key)) return setStatus('bad', '❌ ไม่ใช่คีย์ Gemini (คีย์ต้องขึ้นต้นด้วย AIza) ลองคัดลอกใหม่อีกครั้ง');
+    busy = true;
+    setStatus('wait', '⏳ กำลังตรวจสอบคีย์…');
+    try {
+      await callGemini([{ text: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }], { key });
+      state.settings.apiKey = key;
+      LS.set('settings', state.settings);
+      input.value = key;
+      setStatus('ok', '✅ เชื่อมต่อสำเร็จ พร้อมใช้งานแล้ว');
+      onValid && onValid();
+    } catch (err) {
+      setStatus('bad', err.code === 'badkey' ? '❌ คีย์นี้ใช้ไม่ได้ ลองสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง' : '⚠️ ' + err.message);
+    } finally { busy = false; }
+  }
+  $('.kb-paste', el).onclick = async () => {
+    try {
+      const t = await navigator.clipboard.readText();
+      if (!t.trim()) return setStatus('bad', 'คลิปบอร์ดว่าง — กลับไปกดคัดลอกคีย์ที่หน้า Google ก่อน');
+      input.value = t.trim();
+      check(t);
+    } catch {
+      input.focus();
+      setStatus('', 'เบราว์เซอร์ไม่อนุญาตให้อ่านคลิปบอร์ด — กดค้างที่ช่องด้านบนแล้วเลือก "วาง"');
+    }
+  };
+  input.addEventListener('paste', () => setTimeout(() => check(input.value), 0));
+  input.addEventListener('change', () => check(input.value));
+  if (state.settings.apiKey) { input.value = state.settings.apiKey; setStatus('ok', '✅ ใส่คีย์แล้ว'); }
 }
 
 function normalize(a) {
@@ -331,7 +406,7 @@ function showDuplicate(dup, p) {
 }
 
 async function analyzePhoto(p) {
-  if (!state.settings.apiKey) return showNoKey(p);
+  if (!aiAvailable()) return showNoKey(p);
   openSheet(`<div class="loading"><img src="${p.thumb}" alt=""><div class="spinner"></div><b>AI กำลังดูจานของคุณ…</b><p class="small muted">ประมาณ 3–10 วินาที</p></div>`);
   try {
     const raw = await callGemini([
@@ -346,41 +421,106 @@ async function analyzePhoto(p) {
   }
 }
 
-function showTextInput() {
+// ---------------- food search (works without AI) ----------------
+const EMPTY_ANALYSIS = () => ({ name: '', items: [], kcal: 0, protein: 0, carbs: 0, fat: 0, confidence: 'high', tip: '' });
+const photoCtx = p => (p ? { thumb: p.thumb, sig: p.sig, sha: p.sha } : {});
+
+function foodToAnalysis(f) {
+  const [name, serving, kcal, protein, carbs, fat] = f;
+  return { name, items: [{ name, portion: serving, kcal, protein }], kcal, protein, carbs, fat, confidence: 'high', tip: '' };
+}
+
+function searchFoods(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const out = [];
+  window.FOODS.forEach((f, i) => {
+    const name = f[0].toLowerCase();
+    const hay = name + ' ' + f[1] + ' ' + (f[6] || '').toLowerCase();
+    if (!words.every(w => hay.includes(w))) return;
+    const score = name.startsWith(words[0]) ? 0 : name.includes(words[0]) ? 1 : 2;
+    out.push({ i, score });
+  });
+  return out.sort((x, y) => x.score - y.score || x.i - y.i).slice(0, 40).map(x => x.i);
+}
+
+// Recently eaten dishes (unique by name) for one-tap re-logging.
+function recentMeals(limit = 6) {
+  const seen = new Set(), out = [];
+  for (const m of [...state.meals].sort((a, b) => b.time.localeCompare(a.time))) {
+    if (seen.has(m.name)) continue;
+    seen.add(m.name); out.push(m);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function showFoodSearch(p) {
+  const ai = aiAvailable();
   const sh = openSheet(`
-    <h2>✏️ พิมพ์เมนูที่กิน</h2>
-    <p class="muted small">บอกชื่อและปริมาณคร่าวๆ เช่น "ข้าวมันไก่ 1 จาน + น้ำซุป" หรือ "กาแฟเย็น 1 แก้ว หวานน้อย"</p>
-    <textarea id="foodText" class="text-input" placeholder="กินอะไรมา…"></textarea>
-    <button class="btn primary block" id="goText">🔍 คำนวณ</button>
-    <button class="btn plain block" id="goManual">ใส่ตัวเลขเอง</button>
+    ${p ? `<div class="search-photo"><img src="${p.thumb}" alt=""><div><b>เลือกเมนูที่ตรงกับรูป</b><p class="small muted">ค้นหาจากรายการอาหารไทยในแอป</p></div></div>` : '<h2>🔍 ค้นหาเมนู</h2>'}
+    <input id="foodQ" class="text-input" type="search" placeholder="พิมพ์ชื่อเมนู เช่น กะเพรา, ชาเย็น, ส้มตำ" autocomplete="off">
+    <div id="foodResults" class="food-results"></div>
+    <button class="btn plain block" data-a="manual">✏️ ใส่ตัวเลขเอง</button>
   `);
-  setTimeout(() => $('#foodText')?.focus(), 250);
-  $('#goManual', sh).onclick = () => showResult({ analysis: { name: '', items: [], kcal: 0, protein: 0, carbs: 0, fat: 0, confidence: 'high', tip: '' }, source: 'manual', portion: 1, editing: true });
-  $('#goText', sh).onclick = async () => {
-    const text = $('#foodText').value.trim();
-    if (!text) return toast('พิมพ์ชื่ออาหารก่อนนะ');
-    if (!state.settings.apiKey) return showNoKey();
-    openSheet(`<div class="loading"><div class="spinner"></div><b>กำลังคำนวณ "${esc(text)}"…</b></div>`);
-    try {
-      const a = normalize(await callGemini([{ text: buildPrompt('text', text) }]));
-      if (!a.is_food) return showError('ไม่แน่ใจว่าเป็นอาหารอะไร ลองพิมพ์ให้ละเอียดขึ้น');
-      showResult({ analysis: a, source: 'text', portion: 1 });
-    } catch (err) { showError(err.message, null, err.code); }
+  const row = i => {
+    const f = window.FOODS[i];
+    return `<button class="food-row" data-food="${i}"><span>${esc(f[0])} <span class="muted">· ${esc(f[1])}</span></span><small>${fmt(f[2])} kcal · P ${fmt(f[3])} g</small></button>`;
   };
+  const render = () => {
+    const q = $('#foodQ').value.trim();
+    let html = '';
+    if (q && ai) html += `<button class="food-row ai" data-a="ai"><span>🤖 ให้ AI คำนวณ "${esc(q)}"</span><small>ใส่ปริมาณได้ เช่น "ข้าวมันไก่ 2 จาน + น้ำซุป"</small></button>`;
+    let list;
+    if (!q) {
+      const rec = recentMeals();
+      if (rec.length) html += '<p class="fr-head">กินบ่อย / ล่าสุด</p>' + rec.map(m => `<button class="food-row" data-recent="${m.id}"><span>${esc(m.name)}</span><small>${fmt(m.kcal)} kcal · P ${fmt(m.protein)} g</small></button>`).join('');
+      html += '<p class="fr-head">เมนูยอดนิยม</p>';
+      list = window.FOODS.slice(0, 25).map((_, i) => i);
+    } else list = searchFoods(q);
+    html += list.map(row).join('');
+    if (q && !list.length) html += `<p class="small muted center">ไม่พบ "${esc(q)}" ในรายการ${ai ? ' — กดให้ AI คำนวณด้านบน' : ' — ลองคำอื่น หรือใส่ตัวเลขเอง'}</p>`;
+    $('#foodResults').innerHTML = html;
+  };
+  $('#foodQ').addEventListener('input', render);
+  $('#foodQ').addEventListener('keydown', e => { if (e.key === 'Enter' && ai && e.target.value.trim()) aiText(e.target.value.trim(), p); });
+  render();
+  if (!p) setTimeout(() => $('#foodQ')?.focus(), 250);
+  sh.onclick = e => {
+    const el = e.target.closest('[data-food],[data-recent],[data-a]');
+    if (!el) return;
+    if (el.dataset.food) return showResult({ analysis: foodToAnalysis(window.FOODS[+el.dataset.food]), ...photoCtx(p), source: 'db', portion: 1 });
+    if (el.dataset.recent) {
+      const m = state.meals.find(x => x.id === el.dataset.recent);
+      const base = m.base || { name: m.name, items: m.items, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, confidence: m.confidence };
+      return showResult({ analysis: { ...base, tip: '' }, ...photoCtx(p), source: m.source === 'photo' ? 'text' : m.source, portion: m.portion || 1 });
+    }
+    if (el.dataset.a === 'ai') return aiText($('#foodQ').value.trim(), p);
+    if (el.dataset.a === 'manual') return showResult({ analysis: EMPTY_ANALYSIS(), ...photoCtx(p), source: 'manual', portion: 1, editing: true });
+  };
+}
+
+async function aiText(text, p) {
+  openSheet(`<div class="loading"><div class="spinner"></div><b>กำลังคำนวณ "${esc(text)}"…</b></div>`);
+  try {
+    const a = normalize(await callGemini([{ text: buildPrompt('text', text) }]));
+    if (!a.is_food) return showError('ไม่แน่ใจว่าเป็นอาหารอะไร ลองพิมพ์ให้ละเอียดขึ้น');
+    showResult({ analysis: a, ...photoCtx(p), source: 'text', portion: 1 });
+  } catch (err) { showError(err.message, null, err.code); }
 }
 
 function showNoKey(p) {
   const sh = openSheet(`
-    <h2>🔑 ยังไม่ได้เชื่อมต่อ AI</h2>
-    <p class="muted">ต้องใส่ Google Gemini API Key (ฟรี) ก่อน จึงจะให้ AI ดูรูปอาหารได้</p>
-    <button class="btn primary block" data-a="key">ไปใส่ API Key</button>
-    <button class="btn plain block" data-a="manual">ใส่แคล/โปรตีนเอง</button>
+    ${p ? `<img class="res-photo" src="${p.thumb}" alt="" style="max-height:150px">` : ''}
+    <h2 style="margin-top:12px">🤖 เปิดใช้ AI ดูรูปอาหาร</h2>
+    <p class="muted small">ทำครั้งเดียว ใช้ได้ตลอด — ฟรี ใช้แค่บัญชี Google</p>
+    <div id="nkKeyBox"></div>
+    <button class="btn ghost block" data-a="search">📋 เลือกเมนูจากรายการแทน (ไม่ต้องใช้ AI)</button>
   `);
-  sh.onclick = e => {
-    const a = e.target.closest('[data-a]')?.dataset.a;
-    if (a === 'key') { closeSheet(); switchTab('profile'); setTimeout(() => $('#pfKey').focus(), 300); }
-    if (a === 'manual') showResult({ analysis: { name: '', items: [], kcal: 0, protein: 0, carbs: 0, fat: 0, confidence: 'high', tip: '' }, thumb: p?.thumb, sig: p?.sig, sha: p?.sha, source: 'manual', portion: 1, editing: true });
-  };
+  keyBox($('#nkKeyBox', sh), () => {
+    if (p) setTimeout(() => analyzePhoto(p), 700);
+    else { toast('เชื่อมต่อ AI แล้ว ✅'); closeSheet(); }
+  });
+  sh.onclick = e => { if (e.target.closest('[data-a="search"]')) showFoodSearch(p); };
 }
 
 function showError(msg, p, code) {
@@ -388,15 +528,15 @@ function showError(msg, p, code) {
     <h2>😅 ขออภัย</h2>
     <p>${esc(msg)}</p>
     ${p ? '<button class="btn primary block" data-a="retry">ลองใหม่</button>' : ''}
-    ${code === 'badkey' ? '<button class="btn ghost block" data-a="key">แก้ไข API Key</button>' : ''}
-    <button class="btn plain block" data-a="manual">ใส่ตัวเลขเอง</button>
+    ${['badkey', 'proxy', 'quota'].includes(code) ? '<button class="btn ghost block" data-a="key">🔑 ใส่ / เปลี่ยนคีย์ของฉัน</button>' : ''}
+    <button class="btn ghost block" data-a="search">📋 เลือกเมนูจากรายการแทน</button>
     <button class="btn plain block" data-a="close">ปิด</button>
   `);
   sh.onclick = e => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'retry') analyzePhoto(p);
-    if (a === 'key') { closeSheet(); switchTab('profile'); }
-    if (a === 'manual') showResult({ analysis: { name: '', items: [], kcal: 0, protein: 0, carbs: 0, fat: 0, confidence: 'high', tip: '' }, thumb: p?.thumb, sig: p?.sig, sha: p?.sha, source: 'manual', portion: 1, editing: true });
+    if (a === 'key') showNoKey(p);
+    if (a === 'search') showFoodSearch(p);
     if (a === 'close') closeSheet();
   };
 }
@@ -450,7 +590,7 @@ function showResult(ctx) {
   const sh = openSheet(`
     ${ctx.thumb ? `<img class="res-photo" src="${ctx.thumb}" alt="">` : ''}
     <div class="res-title">${esc(a.name || 'ใส่ข้อมูลอาหาร')}</div>
-    ${ctx.source !== 'manual' ? `<span class="conf">🤖 ${CONF[a.confidence] || ''}</span>` : ''}
+    ${ctx.source === 'db' ? '<span class="conf">📚 ค่าเฉลี่ยจากรายการอาหารในแอป</span>' : ctx.source !== 'manual' ? `<span class="conf">🤖 ${CONF[a.confidence] || ''}</span>` : ''}
     ${editHtml}
     <div class="macros">
       <div class="macro cal"><div class="v">${fmt(cur.kcal)}</div><div class="l">kcal</div></div>
@@ -669,8 +809,13 @@ function renderProfile() {
   $('#pfActivity').value = String(p.activity);
   $('#pfCustomCal').value = p.customCal || '';
   $('#pfCustomPro').value = p.customPro || '';
-  $('#pfKey').value = state.settings.apiKey || '';
   $('#pfModel').value = state.settings.model;
+  $('#aiStatus').innerHTML = state.settings.apiKey
+    ? '✅ <b>ใช้คีย์ของคุณเอง</b> — ดูรูปอาหารได้'
+    : PROXY_URL
+      ? '✅ <b>ใช้ AI ส่วนกลางของแอป</b> — ไม่ต้องตั้งค่า<br><span class="muted">ถ้าโควต้าส่วนกลางเต็มบ่อย ใส่คีย์ฟรีของคุณเองด้านล่างได้</span>'
+      : '⚪ <b>ยังไม่ได้เชื่อม AI</b> — ตอนนี้เลือกเมนูจากรายการได้ ถ้าจะให้ดูรูปอาหาร ทำ 2 ขั้นตอนด้านล่าง';
+  keyBox($('#pfKeyBox'), () => setTimeout(renderProfile, 1200));
   renderWeights();
 }
 
@@ -741,11 +886,13 @@ function startOnboarding() {
   const steps = $$('.ob-step', ob);
   let cur = 0;
   $('#obDots').innerHTML = steps.map(() => '<i></i>').join('');
-  const show = i => {
+  const show = (i, dir = 1) => {
+    if (i === 4 && PROXY_URL) return show(i + dir, dir);
     cur = i;
     steps.forEach((s, j) => s.classList.toggle('active', j === i));
     $$('#obDots i').forEach((d, j) => d.classList.toggle('on', j === i));
     $('#obBack').hidden = i === 0;
+    if (i === 4) keyBox($('#obKeyBox'), () => { $('#obKeyNext').hidden = false; setTimeout(() => show(5), 900); });
     if (i === 5) {
       Object.assign(draft, readSteppers(steps[1]));
       $('#obTargets').innerHTML = targetCards(calcTargets(draft));
@@ -761,12 +908,11 @@ function startOnboarding() {
       return;
     }
     if (e.target.closest('.ob-next')) {
-      if (cur === 4) state.settings.apiKey = $('#obKey').value.trim();
       show(cur + 1);
     }
     if (e.target.closest('.ob-skip')) show(cur + 1);
   });
-  $('#obBack').onclick = () => show(Math.max(0, cur - 1));
+  $('#obBack').onclick = () => show(Math.max(0, cur - 1), -1);
   $('#obFinish').onclick = () => {
     state.profile = { ...draft, ...readSteppers(steps[1]), customCal: 0, customPro: 0 };
     LS.set('profile', state.profile);
@@ -789,7 +935,7 @@ function startMain() {
   $('.bottom-nav').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); };
   $('#btnCamera').onclick = () => $('#fileCamera').click();
   $('#btnGallery').onclick = () => $('#fileGallery').click();
-  $('#btnText').onclick = showTextInput;
+  $('#btnText').onclick = () => showFoodSearch();
   ['#fileCamera', '#fileGallery'].forEach(id => $(id).addEventListener('change', e => {
     const f = e.target.files[0]; e.target.value = ''; handleFile(f);
   }));
@@ -823,25 +969,16 @@ function startMain() {
     renderProfile(); renderToday();
     toast('บันทึกแล้ว เป้าหมายใหม่ ' + fmt(targets().cal) + ' kcal ✅');
   };
-  $('#pfSaveKey').onclick = () => {
-    state.settings.apiKey = $('#pfKey').value.trim();
+  $('#pfModel').onchange = () => {
     state.settings.model = $('#pfModel').value;
     LS.set('settings', state.settings);
-    toast('บันทึกการตั้งค่า AI แล้ว');
+    toast('เปลี่ยนโมเดลแล้ว');
   };
-  $('#pfTestKey').onclick = async () => {
-    const old = { ...state.settings };
-    state.settings.apiKey = $('#pfKey').value.trim();
-    state.settings.model = $('#pfModel').value;
-    toast('กำลังทดสอบ…', 8000);
-    try {
-      const a = normalize(await callGemini([{ text: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }]));
-      toast(`✅ เชื่อมต่อสำเร็จ (ไข่ต้ม ≈ ${a.kcal} kcal)`);
-      LS.set('settings', state.settings);
-    } catch (err) {
-      state.settings = old;
-      toast('❌ ' + err.message, 5000);
-    }
+  $('#pfRemoveKey').onclick = () => {
+    if (!state.settings.apiKey || !confirm('ลบคีย์ของคุณออกจากเครื่องนี้?')) return;
+    state.settings.apiKey = '';
+    LS.set('settings', state.settings);
+    renderProfile(); toast('ลบคีย์แล้ว');
   };
   $('#pfExport').onclick = () => {
     const data = { app: 'CalCha', version: 1, exported: new Date().toISOString(), profile: state.profile, weights: state.weights, meals: state.meals };

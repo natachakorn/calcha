@@ -1,0 +1,16 @@
+name = "calcha-ai"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# Your GitHub Pages origin (no trailing slash). Add more separated by commas.
+ALLOWED_ORIGINS = "https://YOUR-GITHUB-USERNAME.github.io"
+
+# 10 AI requests per minute per device IP. Raise or lower as needed.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

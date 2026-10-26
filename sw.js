@@ -1,6 +1,6 @@
 // CalCha service worker: offline app shell. AI calls always go to the network.
-const CACHE = 'calcha-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
+const CACHE = 'calcha-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'config.js', 'foods.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-32.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
