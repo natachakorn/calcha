@@ -4,7 +4,7 @@ compatibility_date = "2026-01-01"
 
 [vars]
 # Your GitHub Pages origin (no trailing slash). Add more separated by commas.
-ALLOWED_ORIGINS = "https://YOUR-GITHUB-USERNAME.github.io"
+ALLOWED_ORIGINS = "https://natachakorn.github.io"
 
 # 10 AI requests per minute per device IP. Raise or lower as needed.
 [[ratelimits]]
