@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CalCha แคลแชะ</title>
+  <meta name="description" content="ถ่ายรูปอาหาร แล้วรู้แคลอรี่และโปรตีนทันที">
+  <meta name="theme-color" content="#1fae7d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CalCha">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- ============ ONBOARDING ============ -->
+    <section id="onboarding" class="screen" hidden>
+      <div class="ob-head">
+        <img src="icons/icon-192.png" alt="" class="ob-logo">
+        <h1>CalCha <span>แคลแชะ</span></h1>
+        <p class="muted">แชะรูปอาหาร รู้แคลอรี่ &amp; โปรตีนทันที</p>
+        <div class="dots" id="obDots"></div>
+      </div>
+
+      <div class="ob-step" data-step="0">
+        <h2>คุณเป็น…</h2>
+        <div class="choice-grid two">
+          <button class="choice" data-field="sex" data-value="male"><span class="emoji">👨</span>ชาย</button>
+          <button class="choice" data-field="sex" data-value="female"><span class="emoji">👩</span>หญิง</button>
+        </div>
+      </div>
+
+      <div class="ob-step" data-step="1">
+        <h2>ข้อมูลร่างกาย</h2>
+        <div class="stepper-list">
+          <div class="stepper" data-field="age" data-min="10" data-max="100" data-step="1">
+            <label>อายุ</label>
+            <div class="stepper-ctl">
+              <button type="button" class="st-btn" data-d="-1">−</button>
+              <input type="number" inputmode="numeric" value="30">
+              <button type="button" class="st-btn" data-d="1">+</button>
+              <span class="unit">ปี</span>
+            </div>
+          </div>
+          <div class="stepper" data-field="weight" data-min="25" data-max="250" data-step="0.5">
+            <label>น้ำหนัก</label>
+            <div class="stepper-ctl">
+              <button type="button" class="st-btn" data-d="-1">−</button>
+              <input type="number" inputmode="decimal" value="60">
+              <button type="button" class="st-btn" data-d="1">+</button>
+              <span class="unit">กก.</span>
+            </div>
+          </div>
+          <div class="stepper" data-field="height" data-min="100" data-max="230" data-step="1">
+            <label>ส่วนสูง</label>
+            <div class="stepper-ctl">
+              <button type="button" class="st-btn" data-d="-1">−</button>
+              <input type="number" inputmode="numeric" value="165">
+              <button type="button" class="st-btn" data-d="1">+</button>
+              <span class="unit">ซม.</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn primary block ob-next">ถัดไป</button>
+      </div>
+
+      <div class="ob-step" data-step="2">
+        <h2>ปกติขยับตัวแค่ไหน?</h2>
+        <div class="choice-list">
+          <button class="choice row" data-field="activity" data-value="1.2"><span class="emoji">🛋️</span><b>นั่งเป็นหลัก</b><small>ทำงานออฟฟิศ แทบไม่ออกกำลังกาย</small></button>
+          <button class="choice row" data-field="activity" data-value="1.375"><span class="emoji">🚶</span><b>ขยับบ้าง</b><small>เดินบ่อย / ออกกำลังกาย 1–3 วันต่อสัปดาห์</small></button>
+          <button class="choice row" data-field="activity" data-value="1.55"><span class="emoji">🏃</span><b>ออกกำลังกายประจำ</b><small>3–5 วันต่อสัปดาห์</small></button>
+          <button class="choice row" data-field="activity" data-value="1.725"><span class="emoji">🏋️</span><b>หนักมาก</b><small>ออกกำลังกายเกือบทุกวัน / งานใช้แรง</small></button>
+        </div>
+      </div>
+
+      <div class="ob-step" data-step="3">
+        <h2>เป้าหมายของคุณ</h2>
+        <div class="choice-list">
+          <button class="choice row" data-field="goal" data-value="lose"><span class="emoji">📉</span><b>ลดน้ำหนัก</b><small>กินน้อยกว่าที่ใช้ประมาณ 500 kcal</small></button>
+          <button class="choice row" data-field="goal" data-value="maintain"><span class="emoji">⚖️</span><b>รักษาน้ำหนัก</b><small>กินเท่าที่ร่างกายใช้</small></button>
+          <button class="choice row" data-field="goal" data-value="gain"><span class="emoji">💪</span><b>เพิ่มกล้าม / น้ำหนัก</b><small>กินมากกว่าที่ใช้ประมาณ 300 kcal</small></button>
+        </div>
+      </div>
+
+      <div class="ob-step" data-step="4">
+        <h2>เชื่อมต่อ AI วิเคราะห์อาหาร</h2>
+        <p class="muted">CalCha ใช้ <b>Google Gemini</b> (ใช้ฟรี) ในการดูรูปอาหาร ขอ API Key ได้ฟรีภายใน 1 นาที</p>
+        <ol class="howto">
+          <li>เปิด <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></li>
+          <li>ล็อกอินด้วยบัญชี Google แล้วกด <b>Create API key</b></li>
+          <li>คัดลอกคีย์มาวางด้านล่าง</li>
+        </ol>
+        <input id="obKey" class="text-input" type="password" placeholder="วาง API Key (AIza...)" autocomplete="off">
+        <p class="tiny muted">คีย์ถูกเก็บไว้ในเครื่องนี้เท่านั้น</p>
+        <button class="btn primary block ob-next">ถัดไป</button>
+        <button class="btn ghost block ob-skip">ข้ามไปก่อน (ใส่ทีหลังได้)</button>
+      </div>
+
+      <div class="ob-step" data-step="5">
+        <h2>เรียบร้อย! 🎉</h2>
+        <p class="muted">ทุกวันคุณควรได้รับ</p>
+        <div class="target-cards" id="obTargets"></div>
+        <button class="btn primary block" id="obFinish">เริ่มใช้งาน</button>
+      </div>
+
+      <button class="ob-back" id="obBack" aria-label="ย้อนกลับ">‹ ย้อนกลับ</button>
+    </section>
+
+    <!-- ============ MAIN ============ -->
+    <main id="main" hidden>
+      <!-- Today -->
+      <section id="tab-today" class="tab">
+        <header class="top">
+          <div>
+            <p class="muted small" id="todayLabel"></p>
+            <h1 class="greet" id="greet">วันนี้</h1>
+          </div>
+          <img src="icons/icon-192.png" alt="" class="top-logo">
+        </header>
+
+        <div class="card summary">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-bg" cx="60" cy="60" r="52"/>
+              <circle class="ring-fg" id="calRing" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="ring-center">
+              <div class="big" id="calLeft">0</div>
+              <div class="small muted" id="calLeftLabel">kcal ที่เหลือ</div>
+            </div>
+          </div>
+          <div class="sum-lines">
+            <div class="sum-line">
+              <span class="muted small">🔥 แคลอรี่</span>
+              <b id="calText">0 / 0</b>
+              <span class="pct" id="calPct">0%</span>
+            </div>
+            <div class="sum-line">
+              <span class="muted small">🥩 โปรตีน</span>
+              <b id="proText">0 / 0 g</b>
+              <div class="bar"><div class="bar-fill protein" id="proBar"></div></div>
+            </div>
+            <div class="macro-mini small muted" id="macroMini"></div>
+          </div>
+        </div>
+        <p class="hint" id="dayHint"></p>
+
+        <div class="actions">
+          <button class="action cam" id="btnCamera"><span class="ico">📷</span>ถ่ายรูป</button>
+          <button class="action gal" id="btnGallery"><span class="ico">🖼️</span>เลือกรูป</button>
+          <button class="action txt" id="btnText"><span class="ico">✏️</span>พิมพ์เมนู</button>
+        </div>
+        <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+        <input type="file" id="fileGallery" accept="image/*" hidden>
+
+        <h3 class="sec-title">มื้อวันนี้</h3>
+        <div id="mealList" class="meal-list"></div>
+      </section>
+
+      <!-- History -->
+      <section id="tab-history" class="tab" hidden>
+        <header class="top"><h1>ประวัติ</h1></header>
+        <div class="card week" id="weekChart"></div>
+        <div id="historyList"></div>
+      </section>
+
+      <!-- Profile -->
+      <section id="tab-profile" class="tab" hidden>
+        <header class="top"><h1>ข้อมูลของฉัน</h1></header>
+
+        <div class="card">
+          <h3>เป้าหมายต่อวัน</h3>
+          <div class="target-cards" id="profileTargets"></div>
+          <p class="tiny muted" id="bmiText"></p>
+        </div>
+
+        <div class="card form">
+          <h3>ข้อมูลร่างกาย</h3>
+          <div class="seg" data-field="sex">
+            <button data-value="male">👨 ชาย</button>
+            <button data-value="female">👩 หญิง</button>
+          </div>
+          <div class="stepper-list" id="profileSteppers"></div>
+          <label class="lbl">ระดับกิจกรรม</label>
+          <select id="pfActivity" class="text-input">
+            <option value="1.2">🛋️ นั่งเป็นหลัก</option>
+            <option value="1.375">🚶 ขยับบ้าง (1–3 วัน/สัปดาห์)</option>
+            <option value="1.55">🏃 ออกกำลังกายประจำ (3–5 วัน)</option>
+            <option value="1.725">🏋️ หนักมาก (เกือบทุกวัน)</option>
+          </select>
+          <label class="lbl">เป้าหมาย</label>
+          <div class="seg" data-field="goal">
+            <button data-value="lose">📉 ลด</button>
+            <button data-value="maintain">⚖️ คงที่</button>
+            <button data-value="gain">💪 เพิ่ม</button>
+          </div>
+          <details class="custom">
+            <summary>กำหนดเป้าหมายเอง (ไม่บังคับ)</summary>
+            <div class="row2">
+              <label>แคลอรี่ <input type="number" id="pfCustomCal" class="text-input" placeholder="อัตโนมัติ" inputmode="numeric"></label>
+              <label>โปรตีน (g) <input type="number" id="pfCustomPro" class="text-input" placeholder="อัตโนมัติ" inputmode="numeric"></label>
+            </div>
+          </details>
+          <button class="btn primary block" id="pfSave">บันทึกข้อมูล</button>
+        </div>
+
+        <div class="card">
+          <h3>⚖️ บันทึกน้ำหนัก</h3>
+          <div id="weightChart" class="weight-chart"></div>
+          <p class="tiny muted">อัปเดตน้ำหนักด้านบนแล้วกดบันทึก ระบบจะเก็บประวัติให้อัตโนมัติ</p>
+        </div>
+
+        <div class="card form">
+          <h3>🤖 ตั้งค่า AI</h3>
+          <p class="small muted">ใช้ Google Gemini API (ฟรี) — <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">ขอ API Key</a></p>
+          <input id="pfKey" class="text-input" type="password" placeholder="Gemini API Key" autocomplete="off">
+          <label class="lbl">โมเดล</label>
+          <select id="pfModel" class="text-input">
+            <option value="gemini-flash-latest">gemini-flash-latest (แนะนำ · รุ่นล่าสุดเสมอ)</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (เร็ว, โควต้าเยอะกว่า)</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+          </select>
+          <div class="row-btns">
+            <button class="btn ghost" id="pfTestKey">ทดสอบการเชื่อมต่อ</button>
+            <button class="btn primary" id="pfSaveKey">บันทึก</button>
+          </div>
+        </div>
+
+        <div class="card form">
+          <h3>🗂️ ข้อมูล</h3>
+          <div class="row-btns">
+            <button class="btn ghost" id="pfExport">ส่งออก (สำรอง)</button>
+            <button class="btn ghost" id="pfImport">นำเข้า</button>
+          </div>
+          <input type="file" id="importFile" accept="application/json" hidden>
+          <button class="btn danger block" id="pfReset">ลบข้อมูลทั้งหมด</button>
+        </div>
+        <p class="tiny muted center">CalCha v1.0 · ค่าที่ได้เป็นการประมาณจาก AI ไม่ใช่คำแนะนำทางการแพทย์</p>
+      </section>
+
+      <nav class="bottom-nav">
+        <button data-tab="today" class="active"><span>🏠</span>วันนี้</button>
+        <button data-tab="history"><span>📅</span>ประวัติ</button>
+        <button data-tab="profile"><span>👤</span>ข้อมูลฉัน</button>
+      </nav>
+    </main>
+
+    <!-- ============ SHEET (result / dialogs) ============ -->
+    <div id="sheetBackdrop" class="backdrop" hidden></div>
+    <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true"></div>
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
