@@ -179,7 +179,9 @@ function findDuplicate(p) {
 
 // ---------------- Gemini ----------------
 const GEMINI_URL = m => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
-const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+// Tried in order when a model is busy (503) or retired (404). '-latest' aliases follow Google's newest release.
+const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'];
+const MODEL_TIMEOUT_MS = 25000;
 
 const SCHEMA = {
   type: 'OBJECT',
@@ -254,19 +256,26 @@ async function callGemini(parts, opts = {}) {
       contents: [{ role: 'user', parts }],
       generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
     };
-    let r;
+    // A model under heavy load can hang instead of answering 503, so give each one a time limit.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), MODEL_TIMEOUT_MS);
+    let r, body;
     try {
       r = viaProxy
-        ? await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, request }) })
+        ? await fetch(PROXY_URL, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, request }) })
         : await fetch(GEMINI_URL(model), {
           method: 'POST',
+          signal: ctl.signal,
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           body: JSON.stringify(request),
         });
-    } catch {
+      body = await r.json().catch(() => ({}));
+    } catch (e) {
+      if (e.name === 'AbortError') { lastErr = new AIError('AI ตอบช้าเกินไป ลองใหม่อีกครั้ง', 'busy'); continue; }
       throw new AIError('เชื่อมต่ออินเทอร์เน็ตไม่ได้ ลองใหม่อีกครั้ง', 'network');
+    } finally {
+      clearTimeout(timer);
     }
-    const body = await r.json().catch(() => ({}));
     if (r.ok) {
       const txt = (body.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
       if (!txt) throw new AIError('AI ไม่ตอบกลับ (อาจถูกบล็อกเนื้อหา) ลองรูปอื่น', 'empty');

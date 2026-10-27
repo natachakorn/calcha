@@ -4,7 +4,7 @@
 
 ## AI ที่ใช้
 **Google Gemini API** (มี free tier) เรียกตรงจากเครื่องผู้ใช้ด้วย API Key ของผู้ใช้เอง
-- โมเดลเริ่มต้นคือ `gemini-flash-latest` (alias ของรุ่น Flash ล่าสุด) ถ้าใช้ไม่ได้ แอปจะลอง `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-2.0-flash` ให้อัตโนมัติ
+- โมเดลเริ่มต้นคือ `gemini-flash-latest` (alias ของรุ่น Flash ล่าสุด) ถ้าคนใช้เยอะหรือใช้ไม่ได้ แอปจะลอง `gemini-3.8-flash` → `gemini-flash-lite-latest` → `gemini-3.5-flash-lite` ให้อัตโนมัติ
 - ขอคีย์ฟรีได้ที่ https://aistudio.google.com/apikey
 - หมายเหตุ: ข้อมูลที่ส่งผ่าน free tier ของ Google อาจถูกนำไปใช้ปรับปรุงบริการของ Google
 
