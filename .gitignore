@@ -2,3 +2,5 @@
 node_modules/
 *.log
 .wrangler/
+*.apk
+Screenshot_*.jpg

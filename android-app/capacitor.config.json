@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.natachakorn.nubcal",
+  "appName": "นับแคล",
+  "webDir": "www",
+  "server": {
+    "url": "https://natachakorn.github.io/calcha/",
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#f4f7f5"
+  }
+}
