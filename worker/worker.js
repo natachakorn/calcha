@@ -1,15 +1,20 @@
 // NubCal shared-key proxy (Cloudflare Worker).
 // Holds one Gemini API key as a secret so app users don't need their own.
 // The app POSTs { model, request } and gets Gemini's generateContent response back unchanged.
-// It also relays OpenAI calls made with the user's own key ({ provider: 'openai', request } plus an
-// x-user-key header), because api.openai.com does not answer browsers with CORS headers.
-// That key is forwarded for the one request only and never stored or logged.
+// It also relays OpenAI-style chat calls made with the user's own key ({ provider, request } or
+// { provider, list: true } plus an x-user-key header), because not all of these APIs answer browsers
+// with CORS headers. That key is forwarded for the one request only and never stored or logged.
 //
 // Secrets / vars (see wrangler.toml):
 //   GEMINI_API_KEY   secret — your key from https://aistudio.google.com/apikey
 //   ALLOWED_ORIGINS  comma-separated origins allowed to call this worker (your GitHub Pages URL)
 
 const MAX_BODY = 4 * 1024 * 1024; // photos are resized to 1024px in the app, ~200 KB
+const RELAY = {
+  openai: 'https://api.openai.com/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+};
 
 export default {
   async fetch(req, env) {
@@ -44,15 +49,22 @@ export default {
     try { body = await req.json(); } catch { return fail(400, 'invalid JSON'); }
     const { model, request, provider } = body || {};
 
-    if (provider === 'openai') {
+    const base = RELAY[provider];
+    if (base) {
       const userKey = req.headers.get('x-user-key') || '';
-      if (!/^sk-[\w-]{20,}$/.test(userKey)) return fail(401, 'invalid api key');
-      if (!request || !Array.isArray(request.messages)) return fail(400, 'invalid request');
-      const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + userKey },
-        body: JSON.stringify(request),
-      });
+      if (!/^[\w.-]{20,}$/.test(userKey)) return fail(401, 'invalid api key');
+      const auth = { Authorization: 'Bearer ' + userKey };
+      let upstream;
+      if (body.list) {
+        upstream = await fetch(base + '/models', { headers: auth });
+      } else {
+        if (!request || !Array.isArray(request.messages)) return fail(400, 'invalid request');
+        upstream = await fetch(base + '/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...auth },
+          body: JSON.stringify(request),
+        });
+      }
       return new Response(upstream.body, { status: upstream.status, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 

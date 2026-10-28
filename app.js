@@ -45,7 +45,10 @@ const DB = {
 function migrateSettings(s) {
   const out = { apiKey: s.apiKey || '', provider: s.provider || '', models: { ...(s.models || {}) } };
   if (s.model && /^gemini/.test(s.model) && !out.models.gemini) out.models.gemini = s.model;
-  if (out.apiKey && !out.provider) out.provider = /^sk-ant-/.test(out.apiKey) ? 'claude' : /^sk-/.test(out.apiKey) ? 'openai' : 'gemini';
+  if (out.apiKey && !out.provider) {
+    const k = out.apiKey;
+    out.provider = /^sk-ant-/.test(k) ? 'claude' : /^sk-or-/.test(k) ? 'openrouter' : /^gsk_/.test(k) ? 'groq' : /^sk-/.test(k) ? 'openai' : 'gemini';
+  }
   return out;
 }
 
@@ -249,7 +252,7 @@ const PROXY_URL = (window.CALCHA_CONFIG && window.CALCHA_CONFIG.proxyUrl) || '';
 const aiAvailable = () => !!(state.settings.apiKey || PROXY_URL);
 
 // ---------------- AI providers ----------------
-// Users can bring a key from Google Gemini, Anthropic Claude or OpenAI; the key's prefix says which.
+// Users can bring a key from Gemini, Claude, OpenAI, Groq or OpenRouter; the key's prefix says which.
 // Without a key the app uses the shared Gemini proxy (config.js).
 const MODEL_TIMEOUT_MS = 25000;
 const PROVIDERS = {
@@ -262,16 +265,27 @@ const PROVIDERS = {
     label: 'Claude', free: false, keyUrl: 'https://console.anthropic.com/settings/keys',
     models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
   },
+  // OpenAI-style chat APIs. `discover` picks vision models from the provider's own list if ours are retired.
   openai: {
     label: 'ChatGPT (OpenAI)', free: false, keyUrl: 'https://platform.openai.com/api-keys',
+    base: 'https://api.openai.com/v1', discover: /^gpt-[\w.]*-?(mini|4o)/,
     models: ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini'],
   },
+  groq: {
+    label: 'Groq', free: true, keyUrl: 'https://console.groq.com/keys',
+    base: 'https://api.groq.com/openai/v1', discover: /llama-4|scout|maverick|vision|llava/i,
+    models: ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
+  },
+  openrouter: {
+    label: 'OpenRouter', free: false, keyUrl: 'https://openrouter.ai/keys',
+    base: 'https://openrouter.ai/api/v1',
+    models: ['openrouter/auto'],
+  },
 };
-function detectProvider(key) {
-  if (/^sk-ant-/.test(key)) return 'claude';
-  if (/^sk-/.test(key)) return 'openai';
-  return 'gemini';
-}
+const KEY_PREFIXES = [[/^sk-ant-/, 'claude'], [/^sk-or-/, 'openrouter'], [/^gsk_/, 'groq'], [/^sk-/, 'openai'], [/^AIza/, 'gemini']];
+// Unknown formats go to Gemini, whose newer keys don't always start with AIza.
+const detectProvider = key => (KEY_PREFIXES.find(([re]) => re.test(key)) || [, 'gemini'])[1];
+const knownKeyFormat = key => KEY_PREFIXES.some(([re]) => re.test(key));
 const activeProvider = () => (state.settings.apiKey ? state.settings.provider || detectProvider(state.settings.apiKey) : 'gemini');
 
 // Gemini's schema dialect (UPPERCASE types) → standard JSON Schema for Claude / OpenAI.
@@ -334,25 +348,47 @@ const ADAPTERS = {
       return (body.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     },
   },
-  openai: {
+  openai: chatAdapter('openai'),
+  groq: chatAdapter('groq'),
+  openrouter: chatAdapter('openrouter'),
+};
+
+// OpenAI-compatible chat completions (OpenAI, Groq, OpenRouter). Not every one of them answers browsers
+// with CORS headers, so they go through the worker relay when there is one.
+function chatAdapter(provider) {
+  const { base, label } = PROVIDERS[provider];
+  return {
     request(model, { prompt, image }, key) {
       const text = `${prompt}\nตอบเป็น JSON เท่านั้น ตาม JSON Schema นี้: ${JSON.stringify(JSON_SCHEMA)}`;
       const content = image
         ? [{ type: 'text', text }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + image } }]
         : text;
       const request = { model, messages: [{ role: 'user', content }], response_format: { type: 'json_object' } };
-      // api.openai.com sends no CORS headers to browsers, so go through the worker when there is one.
       return PROXY_URL
-        ? { url: PROXY_URL, headers: { 'x-user-key': key }, body: { provider: 'openai', request } }
-        : { url: 'https://api.openai.com/v1/chat/completions', headers: { Authorization: 'Bearer ' + key }, body: request };
+        ? { url: PROXY_URL, headers: { 'x-user-key': key }, body: { provider, request } }
+        : { url: base + '/chat/completions', headers: { Authorization: 'Bearer ' + key }, body: request };
     },
     text(body) {
       const msg = body.choices?.[0]?.message || {};
-      if (msg.refusal) throw new AIError('ChatGPT ไม่ตอบคำขอนี้ ลองรูปอื่น หรือเลือกเมนูจากรายการแทน', 'empty');
+      if (msg.refusal) throw new AIError(`${label} ไม่ตอบคำขอนี้ ลองรูปอื่น หรือเลือกเมนูจากรายการแทน`, 'empty');
       return msg.content || '';
     },
-  },
-};
+  };
+}
+
+// The provider's current model ids, used when every model in our list has been retired.
+async function listModels(provider, key) {
+  try {
+    const r = PROXY_URL
+      ? await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user-key': key }, body: JSON.stringify({ provider, list: true }) })
+      : await fetch(PROVIDERS[provider].base + '/models', { headers: { Authorization: 'Bearer ' + key } });
+    const body = await r.json();
+    return (body.data || []).map(m => m.id).filter(id => PROVIDERS[provider].discover.test(id)).sort().reverse().slice(0, 3);
+  } catch { return []; }
+}
+
+// Model that last answered, per provider, so a busy model isn't waited on again this session.
+const lastGoodModel = {};
 
 // input: { prompt, image? (base64 JPEG) }. opts.key tests a specific key before it is saved.
 async function callAI(input, opts = {}) {
@@ -361,11 +397,14 @@ async function callAI(input, opts = {}) {
   if (!key && !viaProxy) throw new AIError('ยังไม่ได้เชื่อมต่อ AI', 'nokey');
   const provider = key ? (opts.key ? detectProvider(key) : activeProvider()) : 'gemini';
   const { label, free } = PROVIDERS[provider];
-  const chosen = (state.settings.models || {})[provider];
-  const models = [...new Set([chosen, ...PROVIDERS[provider].models].filter(Boolean))];
+  const chosen = viaProxy ? null : (state.settings.models || {})[provider];
+  // The shared key leads with Lite (more free quota, rarely overloaded); then whatever answered last time.
+  const list = viaProxy ? [...PROVIDERS.gemini.models].reverse() : PROVIDERS[provider].models;
+  const models = [...new Set([chosen, lastGoodModel[provider], ...list].filter(Boolean))];
   const adapter = ADAPTERS[provider];
-  let lastErr;
-  for (const model of models) {
+  let lastErr, discovered = false;
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     const req = adapter.request(model, input, key);
     // A model under heavy load can hang instead of answering 503, so give each one a time limit.
     const ctl = new AbortController();
@@ -385,6 +424,7 @@ async function callAI(input, opts = {}) {
       clearTimeout(timer);
     }
     if (r.ok) {
+      lastGoodModel[provider] = model;
       const txt = adapter.text(body);
       if (!txt) throw new AIError('AI ไม่ตอบกลับ (อาจถูกบล็อกเนื้อหา) ลองรูปอื่น', 'empty');
       try { return JSON.parse(txt.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new AIError('อ่านผลจาก AI ไม่ได้ ลองใหม่อีกครั้ง', 'parse'); }
@@ -393,7 +433,12 @@ async function callAI(input, opts = {}) {
     const msg = (typeof err === 'string' ? err : err.message) || r.statusText;
     const code = err.code || err.type || '';
     if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test(msg) && !/key|credit/i.test(msg))) {
-      lastErr = new AIError(msg, 'model'); continue;
+      lastErr = new AIError(msg, 'model');
+      if (i === models.length - 1 && !discovered && key && PROVIDERS[provider].discover) {
+        discovered = true;
+        models.push(...(await listModels(provider, key)).filter(m => !models.includes(m)));
+      }
+      continue;
     }
     // Gemini's free tier counts quota per model, so a 429 there just means "try the next model".
     if (r.status === 429 && provider === 'gemini') {
@@ -426,7 +471,7 @@ async function callAI(input, opts = {}) {
 // The provider decides validity; we only reject text that cannot possibly be a key.
 function extractKey(raw) {
   const text = (raw || '').trim();
-  const known = text.match(/sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}/);
+  const known = text.match(/sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}/);
   if (known) return known[0];
   const tokens = text.match(/[A-Za-z0-9._~+/=-]{30,}/g);
   return tokens ? tokens.sort((a, b) => b.length - a.length)[0] : null;
@@ -443,7 +488,7 @@ function keyBox(el, onValid) {
       <button type="button" class="kb-step kb-paste">
         <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปรู้เองว่าเป็นคีย์ของเจ้าไหน และตรวจสอบให้อัตโนมัติ</small></span><span class="kb-go">${ic('clipboard')}</span>
       </button>
-      <p class="kb-alt tiny muted">มีคีย์ <a href="${PROVIDERS.claude.keyUrl}" target="_blank" rel="noopener">Claude</a> หรือ <a href="${PROVIDERS.openai.keyUrl}" target="_blank" rel="noopener">ChatGPT (OpenAI)</a> อยู่แล้ว? วางในข้อ 2 ได้เลย — สองเจ้านี้คิดเงินตามการใช้งาน ต้องเติมเครดิตในบัญชีก่อน</p>
+      <p class="kb-alt tiny muted">ใช้คีย์ <a href="${PROVIDERS.groq.keyUrl}" target="_blank" rel="noopener">Groq</a> (ฟรี) ก็ได้ หรือถ้ามีคีย์ <a href="${PROVIDERS.claude.keyUrl}" target="_blank" rel="noopener">Claude</a>, <a href="${PROVIDERS.openai.keyUrl}" target="_blank" rel="noopener">ChatGPT</a>, <a href="${PROVIDERS.openrouter.keyUrl}" target="_blank" rel="noopener">OpenRouter</a> วางในข้อ 2 ได้เลย — Claude/ChatGPT/OpenRouter คิดเงินตามการใช้งาน</p>
       <div class="kb-field">
         <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button type="button" class="kb-eye" aria-label="แสดงคีย์">${ic('eye')}</button>
@@ -470,9 +515,10 @@ function keyBox(el, onValid) {
       setStatus('ok', `เชื่อมต่อ ${label} สำเร็จ พร้อมใช้งานแล้ว`);
       onValid && onValid();
     } catch (err) {
-      setStatus('bad', err.code === 'badkey'
-        ? `${label} แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กดรูปตาเพื่อเช็คว่าวางครบ หรือสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
-        : err.message);
+      setStatus('bad', err.code !== 'badkey' ? err.message
+        : knownKeyFormat(key)
+          ? `${label} แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กดรูปตาเพื่อเช็คว่าวางครบ หรือสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
+          : `ไม่รู้จักคีย์ ${maskKey(key)} — แอปรองรับคีย์จาก Google Gemini (AIza…), Groq (gsk_…), Claude (sk-ant-…), ChatGPT (sk-…) และ OpenRouter (sk-or-…)`);
     } finally { busy = false; }
   }
   $('.kb-paste', el).onclick = async () => {
