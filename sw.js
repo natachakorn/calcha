@@ -1,5 +1,5 @@
 // NubCal service worker: offline app shell. AI calls always go to the network.
-const CACHE = 'calcha-v9';
+const CACHE = 'calcha-v10';
 const SHELL = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'foods.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-32.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 

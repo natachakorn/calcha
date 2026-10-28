@@ -273,8 +273,9 @@ const PROVIDERS = {
   },
   groq: {
     label: 'Groq', free: true, keyUrl: 'https://console.groq.com/keys',
-    base: 'https://api.groq.com/openai/v1', discover: /llama-4|scout|maverick|vision|llava/i,
-    models: ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'],
+    // Vision-capable models per console.groq.com/docs/vision (Oct 2026); Llama 4 has been retired.
+    base: 'https://api.groq.com/openai/v1', discover: /qwen.*(vl|3\.[6-9])|muse|vision|scout|maverick|llava|pixtral/i,
+    models: ['qwen/qwen3.8-27b', 'meta-models/muse-spark-open', 'qwen/qwen3.6-27b'],
   },
   openrouter: {
     label: 'OpenRouter', free: false, keyUrl: 'https://openrouter.ai/keys',
@@ -383,8 +384,19 @@ async function listModels(provider, key) {
       ? await fetch(PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user-key': key }, body: JSON.stringify({ provider, list: true }) })
       : await fetch(PROVIDERS[provider].base + '/models', { headers: { Authorization: 'Bearer ' + key } });
     const body = await r.json();
-    return (body.data || []).map(m => m.id).filter(id => PROVIDERS[provider].discover.test(id)).sort().reverse().slice(0, 3);
+    // Model lists don't say which models see images, so likely-vision names go first and
+    // non-chat models (speech, guards, embeddings) are left out; the rest are tried after.
+    const ids = (body.data || []).filter(m => m.active !== false).map(m => m.id)
+      .filter(id => !/whisper|tts|guard|embed|orpheus|playai|distil|compound|audio|transcribe/i.test(id));
+    const likely = ids.filter(id => PROVIDERS[provider].discover.test(id)).sort().reverse();
+    return [...likely, ...ids.filter(id => !likely.includes(id))].slice(0, 6);
   } catch { return []; }
+}
+
+// Some models think out loud (<think>…</think>) or wrap JSON in ``` fences; keep only the JSON object.
+function parseJsonReply(txt) {
+  const s = txt.replace(/<think>[\s\S]*?<\/think>/g, '');
+  return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1));
 }
 
 // Model that last answered, per provider, so a busy model isn't waited on again this session.
@@ -427,12 +439,13 @@ async function callAI(input, opts = {}) {
       lastGoodModel[provider] = model;
       const txt = adapter.text(body);
       if (!txt) throw new AIError('AI ไม่ตอบกลับ (อาจถูกบล็อกเนื้อหา) ลองรูปอื่น', 'empty');
-      try { return JSON.parse(txt.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new AIError('อ่านผลจาก AI ไม่ได้ ลองใหม่อีกครั้ง', 'parse'); }
+      try { return parseJsonReply(txt); } catch { throw new AIError('อ่านผลจาก AI ไม่ได้ ลองใหม่อีกครั้ง', 'parse'); }
     }
     const err = body.error || {};
     const msg = (typeof err === 'string' ? err : err.message) || r.statusText;
     const code = err.code || err.type || '';
-    if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test(msg) && !/key|credit/i.test(msg))) {
+    // Retired/unknown model, or one that can't take images: move on to the next model.
+    if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model|image|vision|multimodal/i.test(msg) && !/key|credit/i.test(msg))) {
       lastErr = new AIError(msg, 'model');
       if (i === models.length - 1 && !discovered && key && PROVIDERS[provider].discover) {
         discovered = true;
@@ -463,7 +476,10 @@ async function callAI(input, opts = {}) {
     if ([500, 502, 503, 529].includes(r.status)) { lastErr = new AIError('เซิร์ฟเวอร์ AI ไม่ว่าง ลองใหม่อีกครั้ง', 'busy'); continue; }
     throw new AIError(msg, 'other');
   }
-  throw lastErr || new AIError('ไม่พบโมเดลที่ใช้งานได้', 'model');
+  if (!lastErr || lastErr.code === 'model') {
+    throw new AIError(`ตอนนี้ ${label} ไม่มีโมเดลที่ดูรูปอาหารได้สำหรับคีย์นี้ ลองใช้คีย์ของเจ้าอื่น หรือใช้ AI ส่วนกลาง (ลบคีย์ของฉันออก)`, 'model');
+  }
+  throw lastErr;
 }
 
 // ---------------- easy key setup ----------------
