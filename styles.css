@@ -424,3 +424,4 @@ main { padding-bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom)); 
 .form .seg button .ic { width: 18px; height: 18px; }
 .day-bars .lbl-ic { display: block; }
 .day-bars .lbl-ic .ic { width: 14px; height: 14px; margin-right: 3px; }
+.kb-alt { margin: -2px 4px 0; line-height: 1.5; }

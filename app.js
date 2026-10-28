@@ -41,9 +41,17 @@ const DB = {
   clear() { return this.tx('readwrite', s => s.clear()); },
 };
 
+// v1.1 stored one Gemini model as `model`; settings now keep the key's provider and a model per provider.
+function migrateSettings(s) {
+  const out = { apiKey: s.apiKey || '', provider: s.provider || '', models: { ...(s.models || {}) } };
+  if (s.model && /^gemini/.test(s.model) && !out.models.gemini) out.models.gemini = s.model;
+  if (out.apiKey && !out.provider) out.provider = /^sk-ant-/.test(out.apiKey) ? 'claude' : /^sk-/.test(out.apiKey) ? 'openai' : 'gemini';
+  return out;
+}
+
 const state = {
   profile: LS.get('profile', null),
-  settings: LS.get('settings', { apiKey: '', model: 'gemini-flash-latest' }),
+  settings: migrateSettings(LS.get('settings', {})),
   weights: LS.get('weights', []),
   meals: [],
 };
@@ -179,12 +187,7 @@ function findDuplicate(p) {
   return best;
 }
 
-// ---------------- Gemini ----------------
-const GEMINI_URL = m => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
-// Tried in order when a model is busy (503) or retired (404). '-latest' aliases follow Google's newest release.
-const FALLBACK_MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'];
-const MODEL_TIMEOUT_MS = 25000;
-
+// ---------------- AI prompt ----------------
 const SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -245,31 +248,135 @@ const PROXY_URL = (window.CALCHA_CONFIG && window.CALCHA_CONFIG.proxyUrl) || '';
 // AI works if the user has their own key, or the app is deployed with a shared-key proxy.
 const aiAvailable = () => !!(state.settings.apiKey || PROXY_URL);
 
-// opts.key forces a specific key (used to test a key before saving it).
-async function callGemini(parts, opts = {}) {
+// ---------------- AI providers ----------------
+// Users can bring a key from Google Gemini, Anthropic Claude or OpenAI; the key's prefix says which.
+// Without a key the app uses the shared Gemini proxy (config.js).
+const MODEL_TIMEOUT_MS = 25000;
+const PROVIDERS = {
+  gemini: {
+    label: 'Google Gemini', free: true, keyUrl: 'https://aistudio.google.com/apikey',
+    // '-latest' aliases follow Google's newest release; tried in order when busy (503) or retired (404).
+    models: ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'],
+  },
+  claude: {
+    label: 'Claude', free: false, keyUrl: 'https://console.anthropic.com/settings/keys',
+    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
+  },
+  openai: {
+    label: 'ChatGPT (OpenAI)', free: false, keyUrl: 'https://platform.openai.com/api-keys',
+    models: ['gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini'],
+  },
+};
+function detectProvider(key) {
+  if (/^sk-ant-/.test(key)) return 'claude';
+  if (/^sk-/.test(key)) return 'openai';
+  return 'gemini';
+}
+const activeProvider = () => (state.settings.apiKey ? state.settings.provider || detectProvider(state.settings.apiKey) : 'gemini');
+
+// Gemini's schema dialect (UPPERCASE types) → standard JSON Schema for Claude / OpenAI.
+function toJsonSchema(s) {
+  const out = { type: s.type.toLowerCase() };
+  if (s.description) out.description = s.description;
+  if (s.enum) out.enum = s.enum;
+  if (s.items) out.items = toJsonSchema(s.items);
+  if (s.properties) {
+    out.properties = Object.fromEntries(Object.entries(s.properties).map(([k, v]) => [k, toJsonSchema(v)]));
+    out.required = s.required || Object.keys(s.properties);
+    out.additionalProperties = false;
+  }
+  return out;
+}
+const JSON_SCHEMA = toJsonSchema(SCHEMA);
+
+// Each adapter turns { prompt, image } into a fetch request and pulls the JSON text out of the reply.
+const ADAPTERS = {
+  gemini: {
+    request(model, { prompt, image }, key) {
+      const parts = image ? [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: prompt }] : [{ text: prompt }];
+      const request = {
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
+      };
+      return key
+        ? { url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, headers: { 'x-goog-api-key': key }, body: request }
+        : { url: PROXY_URL, headers: {}, body: { model, request } };
+    },
+    text: body => (body.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join(''),
+  },
+  claude: {
+    request(model, { prompt, image }, key) {
+      const content = image
+        ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: prompt }]
+        : [{ type: 'text', text: prompt }];
+      // Haiku has no server-side refusal fallback; Opus/Sonnet reroute a declined request themselves.
+      const fallback = !/haiku/.test(model);
+      return {
+        url: 'https://api.anthropic.com/v1/messages',
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2026-10-21',
+          'anthropic-dangerous-direct-browser-access': 'true',
+          ...(fallback ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {}),
+        },
+        body: {
+          model,
+          max_tokens: 16000,
+          messages: [{ role: 'user', content }],
+          // Reading a plate is a quick judgement call, so keep thinking short.
+          output_config: { effort: 'low', format: { type: 'json_schema', schema: JSON_SCHEMA } },
+          ...(fallback ? { fallbacks: 'default' } : {}),
+        },
+      };
+    },
+    text(body) {
+      if (body.stop_reason === 'refusal') throw new AIError('Claude ไม่ตอบคำขอนี้ ลองรูปอื่น หรือเลือกเมนูจากรายการแทน', 'empty');
+      return (body.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    },
+  },
+  openai: {
+    request(model, { prompt, image }, key) {
+      const text = `${prompt}\nตอบเป็น JSON เท่านั้น ตาม JSON Schema นี้: ${JSON.stringify(JSON_SCHEMA)}`;
+      const content = image
+        ? [{ type: 'text', text }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + image } }]
+        : text;
+      const request = { model, messages: [{ role: 'user', content }], response_format: { type: 'json_object' } };
+      // api.openai.com sends no CORS headers to browsers, so go through the worker when there is one.
+      return PROXY_URL
+        ? { url: PROXY_URL, headers: { 'x-user-key': key }, body: { provider: 'openai', request } }
+        : { url: 'https://api.openai.com/v1/chat/completions', headers: { Authorization: 'Bearer ' + key }, body: request };
+    },
+    text(body) {
+      const msg = body.choices?.[0]?.message || {};
+      if (msg.refusal) throw new AIError('ChatGPT ไม่ตอบคำขอนี้ ลองรูปอื่น หรือเลือกเมนูจากรายการแทน', 'empty');
+      return msg.content || '';
+    },
+  },
+};
+
+// input: { prompt, image? (base64 JPEG) }. opts.key tests a specific key before it is saved.
+async function callAI(input, opts = {}) {
   const key = opts.key || state.settings.apiKey;
   const viaProxy = !key && PROXY_URL;
   if (!key && !viaProxy) throw new AIError('ยังไม่ได้เชื่อมต่อ AI', 'nokey');
-  const models = [...new Set([state.settings.model, ...FALLBACK_MODELS])];
+  const provider = key ? (opts.key ? detectProvider(key) : activeProvider()) : 'gemini';
+  const { label, free } = PROVIDERS[provider];
+  const chosen = (state.settings.models || {})[provider];
+  const models = [...new Set([chosen, ...PROVIDERS[provider].models].filter(Boolean))];
+  const adapter = ADAPTERS[provider];
   let lastErr;
   for (const model of models) {
-    const request = {
-      contents: [{ role: 'user', parts }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
-    };
+    const req = adapter.request(model, input, key);
     // A model under heavy load can hang instead of answering 503, so give each one a time limit.
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), MODEL_TIMEOUT_MS);
     let r, body;
     try {
-      r = viaProxy
-        ? await fetch(PROXY_URL, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, request }) })
-        : await fetch(GEMINI_URL(model), {
-          method: 'POST',
-          signal: ctl.signal,
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          body: JSON.stringify(request),
-        });
+      r = await fetch(req.url, {
+        method: 'POST', signal: ctl.signal,
+        headers: { 'Content-Type': 'application/json', ...req.headers },
+        body: JSON.stringify(req.body),
+      });
       body = await r.json().catch(() => ({}));
     } catch (e) {
       if (e.name === 'AbortError') { lastErr = new AIError('AI ตอบช้าเกินไป ลองใหม่อีกครั้ง', 'busy'); continue; }
@@ -278,23 +385,37 @@ async function callGemini(parts, opts = {}) {
       clearTimeout(timer);
     }
     if (r.ok) {
-      const txt = (body.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
+      const txt = adapter.text(body);
       if (!txt) throw new AIError('AI ไม่ตอบกลับ (อาจถูกบล็อกเนื้อหา) ลองรูปอื่น', 'empty');
-      try { return JSON.parse(txt); } catch { throw new AIError('อ่านผลจาก AI ไม่ได้ ลองใหม่อีกครั้ง', 'parse'); }
+      try { return JSON.parse(txt.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new AIError('อ่านผลจาก AI ไม่ได้ ลองใหม่อีกครั้ง', 'parse'); }
     }
-    const msg = body.error?.message || r.statusText;
-    if (r.status === 404 || (r.status === 400 && /model/i.test(msg) && !/key/i.test(msg))) { lastErr = new AIError(msg, 'model'); continue; }
-    if (r.status === 401 || r.status === 403 || /api.?key/i.test(msg)) {
+    const err = body.error || {};
+    const msg = (typeof err === 'string' ? err : err.message) || r.statusText;
+    const code = err.code || err.type || '';
+    if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test(msg) && !/key|credit/i.test(msg))) {
+      lastErr = new AIError(msg, 'model'); continue;
+    }
+    // Gemini's free tier counts quota per model, so a 429 there just means "try the next model".
+    if (r.status === 429 && provider === 'gemini') {
+      lastErr = new AIError(viaProxy
+        ? 'AI ส่วนกลางมีคนใช้เยอะ โควต้าวันนี้เต็มแล้ว ลองใหม่พรุ่งนี้ หรือใส่คีย์ฟรีของคุณเองได้ในหน้า "ข้อมูลฉัน"'
+        : 'คีย์ Gemini ของคุณใช้ครบโควต้าฟรีของวันนี้แล้ว ลองใหม่ภายหลัง', 'quota');
+      continue;
+    }
+    if (!free && /credit balance|insufficient_quota|billing/i.test(msg + ' ' + code)) {
+      throw new AIError(`บัญชี ${label} ของคุณยังไม่มีเครดิต — คีย์ ${label} ต้องเติมเงินก่อนใช้งาน (ไม่ฟรี) หรือใช้คีย์ Google Gemini ที่ฟรีแทน`, 'credit');
+    }
+    if (r.status === 401 || r.status === 403 || /api.?key|authentication/i.test(msg)) {
       throw viaProxy
         ? new AIError('AI ส่วนกลางของแอปใช้งานไม่ได้ตอนนี้ ใส่คีย์ของคุณเองได้ในหน้า "ข้อมูลฉัน"', 'proxy')
-        : new AIError('API Key ไม่ถูกต้อง กรุณาตรวจสอบในหน้า "ข้อมูลฉัน"', 'badkey');
+        : new AIError(`คีย์ ${label} ไม่ถูกต้อง กรุณาตรวจสอบในหน้า "ข้อมูลฉัน"`, 'badkey');
     }
     if (r.status === 429) {
       throw viaProxy
-        ? new AIError('AI ส่วนกลางมีคนใช้เยอะ โควต้าเต็มชั่วคราว ลองใหม่ภายหลัง หรือใส่คีย์ฟรีของคุณเองได้ในหน้า "ข้อมูลฉัน" (ไม่ถึง 1 นาที)', 'quota')
-        : new AIError('ใช้ AI ฟรีครบโควต้าแล้วชั่วคราว รอสักครู่แล้วลองใหม่ หรือเปลี่ยนโมเดลเป็น flash-lite', 'quota');
+        ? new AIError('AI ส่วนกลางมีคนใช้เยอะ โควต้าเต็มชั่วคราว ลองใหม่ภายหลัง หรือใส่คีย์ของคุณเองได้ในหน้า "ข้อมูลฉัน"', 'quota')
+        : new AIError(free ? 'ใช้ AI ฟรีครบโควต้าแล้วชั่วคราว รอสักครู่แล้วลองใหม่' : `${label} จำกัดจำนวนครั้งชั่วคราว รอสักครู่แล้วลองใหม่`, 'quota');
     }
-    if (r.status === 503 || r.status === 500 || r.status === 502) { lastErr = new AIError('เซิร์ฟเวอร์ AI ไม่ว่าง ลองใหม่อีกครั้ง', 'busy'); continue; }
+    if ([500, 502, 503, 529].includes(r.status)) { lastErr = new AIError('เซิร์ฟเวอร์ AI ไม่ว่าง ลองใหม่อีกครั้ง', 'busy'); continue; }
     throw new AIError(msg, 'other');
   }
   throw lastErr || new AIError('ไม่พบโมเดลที่ใช้งานได้', 'model');
@@ -302,11 +423,11 @@ async function callGemini(parts, opts = {}) {
 
 // ---------------- easy key setup ----------------
 // Pull the key out of whatever was pasted: a bare key, quoted text, or a whole copied line.
-// Google decides validity; we only reject text that cannot possibly be a key.
+// The provider decides validity; we only reject text that cannot possibly be a key.
 function extractKey(raw) {
   const text = (raw || '').trim();
-  const classic = text.match(/AIza[0-9A-Za-z_-]{35}/);
-  if (classic) return classic[0];
+  const known = text.match(/sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}/);
+  if (known) return known[0];
   const tokens = text.match(/[A-Za-z0-9._~+/=-]{30,}/g);
   return tokens ? tokens.sort((a, b) => b.length - a.length)[0] : null;
 }
@@ -320,8 +441,9 @@ function keyBox(el, onValid) {
         <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดไอคอนคัดลอกข้างคีย์</small></span><span class="kb-go">${ic('external')}</span>
       </a>
       <button type="button" class="kb-step kb-paste">
-        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบกับ Google ให้อัตโนมัติ</small></span><span class="kb-go">${ic('clipboard')}</span>
+        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปรู้เองว่าเป็นคีย์ของเจ้าไหน และตรวจสอบให้อัตโนมัติ</small></span><span class="kb-go">${ic('clipboard')}</span>
       </button>
+      <p class="kb-alt tiny muted">มีคีย์ <a href="${PROVIDERS.claude.keyUrl}" target="_blank" rel="noopener">Claude</a> หรือ <a href="${PROVIDERS.openai.keyUrl}" target="_blank" rel="noopener">ChatGPT (OpenAI)</a> อยู่แล้ว? วางในข้อ 2 ได้เลย — สองเจ้านี้คิดเงินตามการใช้งาน ต้องเติมเครดิตในบัญชีก่อน</p>
       <div class="kb-field">
         <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button type="button" class="kb-eye" aria-label="แสดงคีย์">${ic('eye')}</button>
@@ -338,16 +460,18 @@ function keyBox(el, onValid) {
     if (!key) return setStatus('bad', 'ข้อความที่วางไม่ใช่คีย์ — ที่หน้า Google ให้กดไอคอนคัดลอกข้างคีย์ แล้วกลับมากดปุ่ม 2 อีกครั้ง');
     input.value = key;
     busy = true;
-    setStatus('wait', `กำลังตรวจสอบคีย์ ${maskKey(key)} กับ Google…`);
+    const provider = detectProvider(key), { label } = PROVIDERS[provider];
+    setStatus('wait', `พบคีย์ ${label} ${maskKey(key)} — กำลังตรวจสอบ…`);
     try {
-      await callGemini([{ text: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }], { key });
+      await callAI({ prompt: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }, { key });
       state.settings.apiKey = key;
+      state.settings.provider = provider;
       LS.set('settings', state.settings);
-      setStatus('ok', 'เชื่อมต่อสำเร็จ พร้อมใช้งานแล้ว');
+      setStatus('ok', `เชื่อมต่อ ${label} สำเร็จ พร้อมใช้งานแล้ว`);
       onValid && onValid();
     } catch (err) {
       setStatus('bad', err.code === 'badkey'
-        ? `Google แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กดรูปตาเพื่อเช็คว่าวางครบ หรือกลับไปสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
+        ? `${label} แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กดรูปตาเพื่อเช็คว่าวางครบ หรือสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
         : err.message);
     } finally { busy = false; }
   }
@@ -435,10 +559,7 @@ async function analyzePhoto(p) {
   if (!aiAvailable()) return showNoKey(p);
   openSheet(`<div class="loading"><img src="${p.thumb}" alt=""><div class="spinner"></div><b>AI กำลังดูจานของคุณ…</b><p class="small muted">ประมาณ 3–10 วินาที</p></div>`);
   try {
-    const raw = await callGemini([
-      { inline_data: { mime_type: 'image/jpeg', data: p.ai.split(',')[1] } },
-      { text: buildPrompt('photo') },
-    ]);
+    const raw = await callAI({ prompt: buildPrompt('photo'), image: p.ai.split(',')[1] });
     const a = normalize(raw);
     if (!a.is_food) return showError('ดูเหมือนในรูปจะไม่ใช่อาหาร ลองถ่ายใหม่ให้เห็นจานชัดๆ', p);
     showResult({ analysis: a, thumb: p.thumb, sig: p.sig, sha: p.sha, source: 'photo', portion: 1 });
@@ -528,7 +649,7 @@ function showFoodSearch(p) {
 async function aiText(text, p) {
   openSheet(`<div class="loading"><div class="spinner"></div><b>กำลังคำนวณ "${esc(text)}"…</b></div>`);
   try {
-    const a = normalize(await callGemini([{ text: buildPrompt('text', text) }]));
+    const a = normalize(await callAI({ prompt: buildPrompt('text', text) }));
     if (!a.is_food) return showError('ไม่แน่ใจว่าเป็นอาหารอะไร ลองพิมพ์ให้ละเอียดขึ้น');
     showResult({ analysis: a, ...photoCtx(p), source: 'text', portion: 1 });
   } catch (err) { showError(err.message, null, err.code); }
@@ -835,9 +956,13 @@ function renderProfile() {
   $('#pfActivity').value = String(p.activity);
   $('#pfCustomCal').value = p.customCal || '';
   $('#pfCustomPro').value = p.customPro || '';
-  $('#pfModel').value = state.settings.model;
+  // Model list follows whichever provider is in use.
+  const prov = activeProvider();
+  $('#pfModel').innerHTML = PROVIDERS[prov].models
+    .map((m, i) => `<option value="${m}">${m}${i === 0 ? ' (แนะนำ)' : ''}</option>`).join('');
+  $('#pfModel').value = (state.settings.models || {})[prov] || PROVIDERS[prov].models[0];
   $('#aiStatus').innerHTML = state.settings.apiKey
-    ? `<span class="status ok">${ic('check-circle')}<b>ใช้คีย์ของคุณเอง</b></span> ดูรูปอาหารได้`
+    ? `<span class="status ok">${ic('check-circle')}<b>ใช้คีย์ ${PROVIDERS[prov].label} ของคุณเอง</b></span> ดูรูปอาหารได้`
     : PROXY_URL
       ? `<span class="status ok">${ic('check-circle')}<b>พร้อมใช้งาน</b></span> ถ่ายรูปอาหารได้เลย ไม่ต้องตั้งค่าอะไร`
       : `<span class="status">${ic('info')}<b>ยังไม่ได้เชื่อม AI</b></span> ตอนนี้เลือกเมนูจากรายการได้ ถ้าจะให้ดูรูปอาหาร ทำ 2 ขั้นตอนด้านล่าง`;
@@ -999,13 +1124,13 @@ function startMain() {
     toast('บันทึกแล้ว เป้าหมายใหม่ ' + fmt(targets().cal) + ' kcal');
   };
   $('#pfModel').onchange = () => {
-    state.settings.model = $('#pfModel').value;
+    state.settings.models = { ...(state.settings.models || {}), [activeProvider()]: $('#pfModel').value };
     LS.set('settings', state.settings);
     toast('เปลี่ยนโมเดลแล้ว');
   };
   $('#pfRemoveKey').onclick = () => {
     if (!state.settings.apiKey || !confirm('ลบคีย์ของคุณออกจากเครื่องนี้?')) return;
-    state.settings.apiKey = '';
+    state.settings.apiKey = ''; state.settings.provider = '';
     LS.set('settings', state.settings);
     renderProfile(); toast('ลบคีย์แล้ว');
   };

@@ -1,6 +1,9 @@
 // NubCal shared-key proxy (Cloudflare Worker).
 // Holds one Gemini API key as a secret so app users don't need their own.
 // The app POSTs { model, request } and gets Gemini's generateContent response back unchanged.
+// It also relays OpenAI calls made with the user's own key ({ provider: 'openai', request } plus an
+// x-user-key header), because api.openai.com does not answer browsers with CORS headers.
+// That key is forwarded for the one request only and never stored or logged.
 //
 // Secrets / vars (see wrangler.toml):
 //   GEMINI_API_KEY   secret — your key from https://aistudio.google.com/apikey
@@ -16,7 +19,7 @@ export default {
     const cors = {
       'Access-Control-Allow-Origin': okOrigin ? origin : allowed[0] || '',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, x-user-key',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
     };
@@ -26,7 +29,6 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (req.method !== 'POST') return fail(405, 'POST only');
     if (!okOrigin) return fail(403, 'origin not allowed');
-    if (!env.GEMINI_API_KEY) return fail(500, 'server key not configured');
 
     // Per-IP rate limit (optional binding, configured in wrangler.toml).
     if (env.RATE_LIMITER) {
@@ -40,7 +42,21 @@ export default {
 
     let body;
     try { body = await req.json(); } catch { return fail(400, 'invalid JSON'); }
-    const { model, request } = body || {};
+    const { model, request, provider } = body || {};
+
+    if (provider === 'openai') {
+      const userKey = req.headers.get('x-user-key') || '';
+      if (!/^sk-[\w-]{20,}$/.test(userKey)) return fail(401, 'invalid api key');
+      if (!request || !Array.isArray(request.messages)) return fail(400, 'invalid request');
+      const upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + userKey },
+        body: JSON.stringify(request),
+      });
+      return new Response(upstream.body, { status: upstream.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    if (!env.GEMINI_API_KEY) return fail(500, 'server key not configured');
     if (typeof model !== 'string' || !/^gemini-[\w.-]+$/.test(model)) return fail(400, 'invalid model');
     if (!request || !Array.isArray(request.contents)) return fail(400, 'invalid request');
 
