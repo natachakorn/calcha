@@ -1178,6 +1178,15 @@ function startMain() {
   try { state.meals = await DB.all(); } catch { state.meals = []; }
   if (state.profile) startMain(); else startOnboarding();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Check for a new release on launch and whenever the app comes back to the foreground,
+    // and reload once when it takes over so nobody keeps running an old version.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
   }
 })();
