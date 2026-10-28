@@ -340,3 +340,7 @@ main { padding-bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom)); 
 .food-row.ai span { font-weight: 600; color: var(--green); }
 .food-row.ai small { color: var(--muted); font-weight: 400; white-space: normal; }
 .fr-head { font-size: 13px; color: var(--muted); margin: 12px 0 2px; font-weight: 600; }
+.kb-field { position: relative; }
+.kb-field .kb-input { padding-right: 48px; }
+.kb-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 10px; font-size: 18px; }
+#pfOwnKey .keybox { margin-top: 10px; }

@@ -242,7 +242,6 @@ class AIError extends Error {
 const PROXY_URL = (window.CALCHA_CONFIG && window.CALCHA_CONFIG.proxyUrl) || '';
 // AI works if the user has their own key, or the app is deployed with a shared-key proxy.
 const aiAvailable = () => !!(state.settings.apiKey || PROXY_URL);
-const KEY_RE = /^AIza[0-9A-Za-z_-]{30,}$/;
 
 // opts.key forces a specific key (used to test a key before saving it).
 async function callGemini(parts, opts = {}) {
@@ -283,7 +282,7 @@ async function callGemini(parts, opts = {}) {
     }
     const msg = body.error?.message || r.statusText;
     if (r.status === 404 || (r.status === 400 && /model/i.test(msg) && !/key/i.test(msg))) { lastErr = new AIError(msg, 'model'); continue; }
-    if (r.status === 400 && /api key/i.test(msg) || r.status === 403) {
+    if (r.status === 401 || r.status === 403 || /api.?key/i.test(msg)) {
       throw viaProxy
         ? new AIError('AI ส่วนกลางของแอปใช้งานไม่ได้ตอนนี้ ใส่คีย์ของคุณเองได้ในหน้า "ข้อมูลฉัน"', 'proxy')
         : new AIError('API Key ไม่ถูกต้อง กรุณาตรวจสอบในหน้า "ข้อมูลฉัน"', 'badkey');
@@ -300,44 +299,60 @@ async function callGemini(parts, opts = {}) {
 }
 
 // ---------------- easy key setup ----------------
+// Pull the key out of whatever was pasted: a bare key, quoted text, or a whole copied line.
+// Google decides validity; we only reject text that cannot possibly be a key.
+function extractKey(raw) {
+  const text = (raw || '').trim();
+  const classic = text.match(/AIza[0-9A-Za-z_-]{35}/);
+  if (classic) return classic[0];
+  const tokens = text.match(/[A-Za-z0-9._~+/=-]{30,}/g);
+  return tokens ? tokens.sort((a, b) => b.length - a.length)[0] : null;
+}
+const maskKey = k => (k.length > 12 ? `${k.slice(0, 6)}…${k.slice(-4)}` : k);
+
 // Renders: open-Google button → paste button (reads clipboard) → auto test → saved.
 function keyBox(el, onValid) {
   el.innerHTML = `
     <div class="keybox">
       <a class="kb-step" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
-        <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดคัดลอก</small></span><span class="kb-go">↗</span>
+        <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดไอคอนคัดลอก 📋 ข้างคีย์</small></span><span class="kb-go">↗</span>
       </a>
       <button type="button" class="kb-step kb-paste">
-        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบให้อัตโนมัติ</small></span><span class="kb-go">📋</span>
+        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบกับ Google ให้อัตโนมัติ</small></span><span class="kb-go">📋</span>
       </button>
-      <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้ (AIza…)" autocomplete="off" spellcheck="false">
+      <div class="kb-field">
+        <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button type="button" class="kb-eye" aria-label="แสดงคีย์">👁</button>
+      </div>
       <p class="kb-status small" aria-live="polite"></p>
     </div>`;
   const input = $('.kb-input', el), status = $('.kb-status', el);
   const setStatus = (cls, txt) => { status.className = 'kb-status small ' + cls; status.textContent = txt; };
+  $('.kb-eye', el).onclick = () => { input.type = input.type === 'password' ? 'text' : 'password'; };
   let busy = false;
   async function check(raw) {
-    const key = (raw || '').trim().replace(/^["']|["']$/g, '');
-    if (!key || busy) return;
-    if (!KEY_RE.test(key)) return setStatus('bad', '❌ ไม่ใช่คีย์ Gemini (คีย์ต้องขึ้นต้นด้วย AIza) ลองคัดลอกใหม่อีกครั้ง');
+    if (!(raw || '').trim() || busy) return;
+    const key = extractKey(raw);
+    if (!key) return setStatus('bad', '❌ ข้อความที่วางไม่ใช่คีย์ — ที่หน้า Google ให้กดไอคอนคัดลอก 📋 ข้างคีย์ แล้วกลับมากดปุ่ม ② อีกครั้ง');
+    input.value = key;
     busy = true;
-    setStatus('wait', '⏳ กำลังตรวจสอบคีย์…');
+    setStatus('wait', `⏳ กำลังตรวจสอบคีย์ ${maskKey(key)} กับ Google…`);
     try {
       await callGemini([{ text: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }], { key });
       state.settings.apiKey = key;
       LS.set('settings', state.settings);
-      input.value = key;
       setStatus('ok', '✅ เชื่อมต่อสำเร็จ พร้อมใช้งานแล้ว');
       onValid && onValid();
     } catch (err) {
-      setStatus('bad', err.code === 'badkey' ? '❌ คีย์นี้ใช้ไม่ได้ ลองสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง' : '⚠️ ' + err.message);
+      setStatus('bad', err.code === 'badkey'
+        ? `❌ Google แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กด 👁 เช็คว่าวางครบ หรือกลับไปสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
+        : '⚠️ ' + err.message);
     } finally { busy = false; }
   }
   $('.kb-paste', el).onclick = async () => {
     try {
       const t = await navigator.clipboard.readText();
       if (!t.trim()) return setStatus('bad', 'คลิปบอร์ดว่าง — กลับไปกดคัดลอกคีย์ที่หน้า Google ก่อน');
-      input.value = t.trim();
       check(t);
     } catch {
       input.focus();
@@ -822,8 +837,11 @@ function renderProfile() {
   $('#aiStatus').innerHTML = state.settings.apiKey
     ? '✅ <b>ใช้คีย์ของคุณเอง</b> — ดูรูปอาหารได้'
     : PROXY_URL
-      ? '✅ <b>ใช้ AI ส่วนกลางของแอป</b> — ไม่ต้องตั้งค่า<br><span class="muted">ถ้าโควต้าส่วนกลางเต็มบ่อย ใส่คีย์ฟรีของคุณเองด้านล่างได้</span>'
+      ? '✅ <b>พร้อมใช้งาน</b> — ถ่ายรูปอาหารได้เลย ไม่ต้องตั้งค่าอะไร'
       : '⚪ <b>ยังไม่ได้เชื่อม AI</b> — ตอนนี้เลือกเมนูจากรายการได้ ถ้าจะให้ดูรูปอาหาร ทำ 2 ขั้นตอนด้านล่าง';
+  // With the shared AI a personal key is optional, so keep it folded away unless one is set.
+  $('#pfOwnKey').open = !PROXY_URL || !!state.settings.apiKey;
+  $('#pfOwnKey summary').textContent = PROXY_URL ? 'ใช้คีย์ของตัวเองแทน (ไม่จำเป็น)' : 'เชื่อมต่อ AI';
   keyBox($('#pfKeyBox'), () => setTimeout(renderProfile, 1200));
   renderWeights();
 }
