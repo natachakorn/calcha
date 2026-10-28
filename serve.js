@@ -23,7 +23,7 @@ http.createServer((req, res) => {
     res.end(data);
   });
 }).listen(PORT, () => {
-  console.log(`CalCha running at http://localhost:${PORT}`);
+  console.log(`NubCal running at http://localhost:${PORT}`);
   for (const ifs of Object.values(os.networkInterfaces()))
     for (const i of ifs) if (i.family === 'IPv4' && !i.internal) console.log(`  on your network: http://${i.address}:${PORT}`);
 });

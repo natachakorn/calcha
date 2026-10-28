@@ -1,6 +1,6 @@
 {
-  "name": "CalCha แคลแชะ",
-  "short_name": "CalCha",
+  "name": "นับแคล NubCal",
+  "short_name": "นับแคล",
   "description": "ถ่ายรูปอาหาร แล้วรู้แคลอรี่และโปรตีนทันที",
   "lang": "th",
   "start_url": "./",

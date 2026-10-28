@@ -344,3 +344,83 @@ main { padding-bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom)); 
 .kb-field .kb-input { padding-right: 48px; }
 .kb-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; border-radius: 10px; font-size: 18px; }
 #pfOwnKey .keybox { margin-top: 10px; }
+
+/* ---------- line icons (icons.js) ---------- */
+.ic { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
+.btn .ic { width: 20px; height: 20px; }
+.with-ic { display: flex; align-items: center; gap: 8px; }
+.with-ic .ic { color: var(--green); width: 22px; height: 22px; }
+.with-ic .ic.accent { color: var(--orange); width: 26px; height: 26px; }
+
+/* onboarding choice chips */
+.choice .emoji {
+  width: 64px; height: 64px; border-radius: 20px; display: flex; align-items: center; justify-content: center;
+  background: var(--green-soft); color: var(--green); font-size: 0; transition: background .15s, color .15s;
+}
+.choice .emoji .ic { width: 32px; height: 32px; }
+.choice.row .emoji { width: 44px; height: 44px; border-radius: 14px; }
+.choice.row .emoji .ic { width: 24px; height: 24px; }
+.choice.selected .emoji { background: var(--green); color: #fff; }
+.ob-back { display: inline-flex; align-items: center; gap: 2px; }
+
+/* summary labels */
+.lbl-ic { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--muted); }
+.lbl-ic.cal .ic { color: var(--orange); }
+.lbl-ic.pro .ic { color: var(--green); }
+.greet { display: flex; align-items: center; gap: 8px; }
+.greet-ic { color: var(--orange); width: 24px; height: 24px; }
+
+/* action buttons */
+.action .ico {
+  width: 46px; height: 46px; border-radius: 15px; display: flex; align-items: center; justify-content: center;
+  background: var(--green-soft); color: var(--green); font-size: 0;
+}
+.action .ico .ic { width: 24px; height: 24px; }
+.action.cam .ico { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* bottom nav: pill highlight */
+.bottom-nav button span.nav-ic {
+  filter: none; opacity: 1; font-size: 0; width: 60px; height: 32px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center; transition: background .2s;
+}
+.bottom-nav .nav-ic .ic { width: 22px; height: 22px; }
+.bottom-nav button.active .nav-ic { background: var(--green-soft); }
+
+/* sheets */
+.sheet-ic {
+  width: 56px; height: 56px; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+}
+.sheet-ic .ic { width: 28px; height: 28px; }
+.sheet-ic.warn { background: var(--orange-soft); color: var(--orange); }
+.sheet-ic.bad { background: var(--red-soft); color: var(--red); }
+.conf { display: inline-flex; align-items: center; gap: 4px; }
+.impact h4 { display: flex; align-items: center; gap: 6px; }
+.impact h4 .ic { color: var(--green); }
+.imp-top > span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.stack-bar.cal ~ .imp-sub .ic, .imp-sub .ic { color: var(--red); }
+.imp-row:first-child .imp-top .ic { color: var(--orange); }
+.imp-row:last-child .imp-top .ic { color: var(--green); }
+.tip { display: flex; gap: 10px; align-items: flex-start; }
+.tip .ic { color: var(--green); width: 20px; height: 20px; margin-top: 1px; }
+.mealtype button { display: inline-flex; align-items: center; gap: 5px; }
+.mealtype button .ic { width: 16px; height: 16px; }
+.meal .meta .ic { width: 14px; height: 14px; margin-right: 3px; }
+.meal .noimg { color: var(--green); }
+.meal .noimg .ic { width: 28px; height: 28px; }
+.empty .e { color: var(--line); margin-bottom: 6px; }
+.empty .e .ic { width: 48px; height: 48px; color: var(--muted); opacity: .45; }
+.food-row.ai span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* key box + status */
+.kb-go { display: flex; }
+.kb-go .ic { width: 22px; height: 22px; }
+.kb-eye { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.kb-eye .ic { width: 20px; height: 20px; }
+.status { display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; color: var(--muted); }
+.status.ok { color: var(--green); }
+
+/* profile segmented controls */
+.form .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.form .seg button .ic { width: 18px; height: 18px; }
+.day-bars .lbl-ic { display: block; }
+.day-bars .lbl-ic .ic { width: 14px; height: 14px; margin-right: 3px; }

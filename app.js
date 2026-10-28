@@ -1,4 +1,4 @@
-/* CalCha (แคลแชะ) — snap food, get calories & protein.
+/* นับแคล NubCal — snap food, get calories & protein.
  * AI: Google Gemini API (free tier) called directly from the device with the user's own key. */
 'use strict';
 
@@ -59,7 +59,9 @@ const thaiDate = (d, opt = { weekday: 'long', day: 'numeric', month: 'long' }) =
 const timeStr = iso => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const MEAL_TYPES = { breakfast: '🌅 เช้า', lunch: '☀️ กลางวัน', dinner: '🌙 เย็น', snack: '🍪 ของว่าง' };
+const MEAL_TYPES = { breakfast: 'เช้า', lunch: 'กลางวัน', dinner: 'เย็น', snack: 'ของว่าง' };
+const MEAL_ICONS = { breakfast: 'sunrise', lunch: 'sun', dinner: 'moon', snack: 'cookie' };
+const mealLabel = t => (MEAL_TYPES[t] ? ic(MEAL_ICONS[t]) + MEAL_TYPES[t] : '');
 function guessMealType(d = new Date()) {
   const h = d.getHours();
   if (h >= 5 && h < 10) return 'breakfast';
@@ -315,14 +317,14 @@ function keyBox(el, onValid) {
   el.innerHTML = `
     <div class="keybox">
       <a class="kb-step" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
-        <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดไอคอนคัดลอก 📋 ข้างคีย์</small></span><span class="kb-go">↗</span>
+        <span class="kb-n">1</span><span><b>เปิดหน้า Google รับคีย์ฟรี</b><small>ล็อกอิน Google → กด "Create API key" → กดไอคอนคัดลอกข้างคีย์</small></span><span class="kb-go">${ic('external')}</span>
       </a>
       <button type="button" class="kb-step kb-paste">
-        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบกับ Google ให้อัตโนมัติ</small></span><span class="kb-go">📋</span>
+        <span class="kb-n">2</span><span><b>กลับมากดตรงนี้เพื่อวางคีย์</b><small>แอปจะตรวจสอบกับ Google ให้อัตโนมัติ</small></span><span class="kb-go">${ic('clipboard')}</span>
       </button>
       <div class="kb-field">
         <input class="text-input kb-input" type="password" placeholder="หรือกดค้างแล้ววางคีย์ตรงนี้" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button type="button" class="kb-eye" aria-label="แสดงคีย์">👁</button>
+        <button type="button" class="kb-eye" aria-label="แสดงคีย์">${ic('eye')}</button>
       </div>
       <p class="kb-status small" aria-live="polite"></p>
     </div>`;
@@ -333,20 +335,20 @@ function keyBox(el, onValid) {
   async function check(raw) {
     if (!(raw || '').trim() || busy) return;
     const key = extractKey(raw);
-    if (!key) return setStatus('bad', '❌ ข้อความที่วางไม่ใช่คีย์ — ที่หน้า Google ให้กดไอคอนคัดลอก 📋 ข้างคีย์ แล้วกลับมากดปุ่ม ② อีกครั้ง');
+    if (!key) return setStatus('bad', 'ข้อความที่วางไม่ใช่คีย์ — ที่หน้า Google ให้กดไอคอนคัดลอกข้างคีย์ แล้วกลับมากดปุ่ม 2 อีกครั้ง');
     input.value = key;
     busy = true;
-    setStatus('wait', `⏳ กำลังตรวจสอบคีย์ ${maskKey(key)} กับ Google…`);
+    setStatus('wait', `กำลังตรวจสอบคีย์ ${maskKey(key)} กับ Google…`);
     try {
       await callGemini([{ text: buildPrompt('text', 'ไข่ต้ม 1 ฟอง') }], { key });
       state.settings.apiKey = key;
       LS.set('settings', state.settings);
-      setStatus('ok', '✅ เชื่อมต่อสำเร็จ พร้อมใช้งานแล้ว');
+      setStatus('ok', 'เชื่อมต่อสำเร็จ พร้อมใช้งานแล้ว');
       onValid && onValid();
     } catch (err) {
       setStatus('bad', err.code === 'badkey'
-        ? `❌ Google แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กด 👁 เช็คว่าวางครบ หรือกลับไปสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
-        : '⚠️ ' + err.message);
+        ? `Google แจ้งว่าคีย์ ${maskKey(key)} ใช้ไม่ได้ — กดรูปตาเพื่อเช็คว่าวางครบ หรือกลับไปสร้างคีย์ใหม่แล้วคัดลอกอีกครั้ง`
+        : err.message);
     } finally { busy = false; }
   }
   $('.kb-paste', el).onclick = async () => {
@@ -361,7 +363,7 @@ function keyBox(el, onValid) {
   };
   input.addEventListener('paste', () => setTimeout(() => check(input.value), 0));
   input.addEventListener('change', () => check(input.value));
-  if (state.settings.apiKey) { input.value = state.settings.apiKey; setStatus('ok', '✅ ใส่คีย์แล้ว'); }
+  if (state.settings.apiKey) { input.value = state.settings.apiKey; setStatus('ok', 'ใส่คีย์แล้ว'); }
 }
 
 function normalize(a) {
@@ -406,22 +408,22 @@ async function handleFile(file) {
 function showDuplicate(dup, p) {
   const when = dup.date === dateKey() ? `วันนี้ ${timeStr(dup.time)}` : `${thaiDate(parseKey(dup.date), { day: 'numeric', month: 'short' })} ${timeStr(dup.time)}`;
   const sh = openSheet(`
-    <h2>🤔 รูปนี้เคยส่งแล้ว</h2>
+    <div class="sheet-ic warn">${ic('copy')}</div><h2>รูปนี้เคยส่งแล้ว</h2>
     <p class="muted small">ส่งไปเมื่อ <b>${when}</b> — ${esc(dup.name)} (${fmt(dup.kcal)} kcal)</p>
     <div class="dup-imgs">
       <figure><img src="${dup.thumb}" alt=""><figcaption>ที่บันทึกไว้</figcaption></figure>
       <figure><img src="${p.thumb}" alt=""><figcaption>รูปที่ส่งตอนนี้</figcaption></figure>
     </div>
     <p><b>เป็นมื้อเดิม หรือมื้อใหม่?</b></p>
-    <button class="btn ghost block" data-a="same">🔁 มื้อเดิม — ไม่ต้องนับซ้ำ</button>
-    <button class="btn primary block" data-a="new">➕ มื้อใหม่ — กินอีกครั้ง นับเพิ่ม</button>
-    <button class="btn plain block" data-a="reanalyze">🔍 เป็นอาหารอื่น ให้ AI วิเคราะห์ใหม่</button>
+    <button class="btn ghost block" data-a="same">${ic('repeat')}มื้อเดิม — ไม่ต้องนับซ้ำ</button>
+    <button class="btn primary block" data-a="new">${ic('plus')}มื้อใหม่ — กินอีกครั้ง นับเพิ่ม</button>
+    <button class="btn plain block" data-a="reanalyze">${ic('scan')}เป็นอาหารอื่น ให้ AI วิเคราะห์ใหม่</button>
   `);
   sh.onclick = e => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a) return;
     sh.onclick = null;
-    if (a === 'same') { closeSheet(); toast('โอเค ไม่นับซ้ำ ✅'); }
+    if (a === 'same') { closeSheet(); toast('โอเค ไม่นับซ้ำ'); }
     else if (a === 'new') {
       const base = dup.base || { name: dup.name, items: dup.items, kcal: dup.kcal, protein: dup.protein, carbs: dup.carbs, fat: dup.fat, confidence: dup.confidence, tip: '' };
       showResult({ analysis: { ...base, is_food: true }, thumb: p.thumb, sig: p.sig, sha: p.sha, source: dup.source || 'photo', portion: dup.portion || 1 });
@@ -438,7 +440,7 @@ async function analyzePhoto(p) {
       { text: buildPrompt('photo') },
     ]);
     const a = normalize(raw);
-    if (!a.is_food) return showError('ดูเหมือนในรูปจะไม่ใช่อาหาร 🧐 ลองถ่ายใหม่ให้เห็นจานชัดๆ', p);
+    if (!a.is_food) return showError('ดูเหมือนในรูปจะไม่ใช่อาหาร ลองถ่ายใหม่ให้เห็นจานชัดๆ', p);
     showResult({ analysis: a, thumb: p.thumb, sig: p.sig, sha: p.sha, source: 'photo', portion: 1 });
   } catch (err) {
     showError(err.message, p, err.code);
@@ -481,10 +483,10 @@ function recentMeals(limit = 6) {
 function showFoodSearch(p) {
   const ai = aiAvailable();
   const sh = openSheet(`
-    ${p ? `<div class="search-photo"><img src="${p.thumb}" alt=""><div><b>เลือกเมนูที่ตรงกับรูป</b><p class="small muted">ค้นหาจากรายการอาหารไทยในแอป</p></div></div>` : '<h2>🔍 ค้นหาเมนู</h2>'}
+    ${p ? `<div class="search-photo"><img src="${p.thumb}" alt=""><div><b>เลือกเมนูที่ตรงกับรูป</b><p class="small muted">ค้นหาจากรายการอาหารไทยในแอป</p></div></div>` : `<h2 class="with-ic">${ic('search')}ค้นหาเมนู</h2>`}
     <input id="foodQ" class="text-input" type="search" placeholder="พิมพ์ชื่อเมนู เช่น กะเพรา, ชาเย็น, ส้มตำ" autocomplete="off">
     <div id="foodResults" class="food-results"></div>
-    <button class="btn plain block" data-a="manual">✏️ ใส่ตัวเลขเอง</button>
+    <button class="btn plain block" data-a="manual">${ic('pencil')}ใส่ตัวเลขเอง</button>
   `);
   const row = i => {
     const f = window.FOODS[i];
@@ -493,7 +495,7 @@ function showFoodSearch(p) {
   const render = () => {
     const q = $('#foodQ').value.trim();
     let html = '';
-    if (q && ai) html += `<button class="food-row ai" data-a="ai"><span>🤖 ให้ AI คำนวณ "${esc(q)}"</span><small>ใส่ปริมาณได้ เช่น "ข้าวมันไก่ 2 จาน + น้ำซุป"</small></button>`;
+    if (q && ai) html += `<button class="food-row ai" data-a="ai"><span>${ic('sparkles')}ให้ AI คำนวณ "${esc(q)}"</span><small>ใส่ปริมาณได้ เช่น "ข้าวมันไก่ 2 จาน + น้ำซุป"</small></button>`;
     let list;
     if (!q) {
       const rec = recentMeals();
@@ -535,25 +537,25 @@ async function aiText(text, p) {
 function showNoKey(p) {
   const sh = openSheet(`
     ${p ? `<img class="res-photo" src="${p.thumb}" alt="" style="max-height:150px">` : ''}
-    <h2 style="margin-top:12px">🤖 เปิดใช้ AI ดูรูปอาหาร</h2>
+    <h2 class="with-ic" style="margin-top:12px">${ic('sparkles')}เปิดใช้ AI ดูรูปอาหาร</h2>
     <p class="muted small">ทำครั้งเดียว ใช้ได้ตลอด — ฟรี ใช้แค่บัญชี Google</p>
     <div id="nkKeyBox"></div>
-    <button class="btn ghost block" data-a="search">📋 เลือกเมนูจากรายการแทน (ไม่ต้องใช้ AI)</button>
+    <button class="btn ghost block" data-a="search">${ic('list')}เลือกเมนูจากรายการแทน (ไม่ต้องใช้ AI)</button>
   `);
   keyBox($('#nkKeyBox', sh), () => {
     if (p) setTimeout(() => analyzePhoto(p), 700);
-    else { toast('เชื่อมต่อ AI แล้ว ✅'); closeSheet(); }
+    else { toast('เชื่อมต่อ AI แล้ว'); closeSheet(); }
   });
   sh.onclick = e => { if (e.target.closest('[data-a="search"]')) showFoodSearch(p); };
 }
 
 function showError(msg, p, code) {
   const sh = openSheet(`
-    <h2>😅 ขออภัย</h2>
+    <div class="sheet-ic bad">${ic('alert')}</div><h2>ขออภัย</h2>
     <p>${esc(msg)}</p>
     ${p ? '<button class="btn primary block" data-a="retry">ลองใหม่</button>' : ''}
-    ${['badkey', 'proxy', 'quota'].includes(code) ? '<button class="btn ghost block" data-a="key">🔑 ใส่ / เปลี่ยนคีย์ของฉัน</button>' : ''}
-    <button class="btn ghost block" data-a="search">📋 เลือกเมนูจากรายการแทน</button>
+    ${['badkey', 'proxy', 'quota'].includes(code) ? `<button class="btn ghost block" data-a="key">${ic('key')}ใส่ / เปลี่ยนคีย์ของฉัน</button>` : ''}
+    <button class="btn ghost block" data-a="search">${ic('list')}เลือกเมนูจากรายการแทน</button>
     <button class="btn plain block" data-a="close">ปิด</button>
   `);
   sh.onclick = e => {
@@ -579,7 +581,7 @@ function impactRow(label, unit, before, add, target, cls) {
     <div class="imp-row">
       <div class="imp-top"><span>${label} มื้อนี้ <b>${pct(add, target)}%</b> ของวัน</span><b>${fmt(total)} / ${fmt(target)} ${unit}</b></div>
       <div class="stack-bar ${cls}"><div class="a" style="width:${wA}%"></div><div class="b ${over ? 'over' : ''}" style="width:${wB}%"></div></div>
-      <div class="imp-sub">${over ? `⚠️ รวมแล้วเกินเป้า ${fmt(-left)} ${unit}` : `รวมทั้งวัน ${pct(total, target)}% · เหลืออีก ${fmt(left)} ${unit}`}</div>
+      <div class="imp-sub">${over ? `${ic('alert')}รวมแล้วเกินเป้า ${fmt(-left)} ${unit}` : `รวมทั้งวัน ${pct(total, target)}% · เหลืออีก ${fmt(left)} ${unit}`}</div>
     </div>`;
 }
 
@@ -614,7 +616,7 @@ function showResult(ctx) {
   const sh = openSheet(`
     ${ctx.thumb ? `<img class="res-photo" src="${ctx.thumb}" alt="">` : ''}
     <div class="res-title">${esc(a.name || 'ใส่ข้อมูลอาหาร')}</div>
-    ${ctx.source === 'db' ? '<span class="conf">📚 ค่าเฉลี่ยจากรายการอาหารในแอป</span>' : ctx.source !== 'manual' ? `<span class="conf">🤖 ${CONF[a.confidence] || ''}</span>` : ''}
+    ${ctx.source === 'db' ? `<span class="conf">${ic('book')}ค่าเฉลี่ยจากรายการอาหารในแอป</span>` : ctx.source !== 'manual' ? `<span class="conf">${ic('sparkles')}${CONF[a.confidence] || ''}</span>` : ''}
     ${editHtml}
     <div class="macros">
       <div class="macro cal"><div class="v">${fmt(cur.kcal)}</div><div class="l">kcal</div></div>
@@ -625,17 +627,17 @@ function showResult(ctx) {
     <p class="small muted" style="margin:0 0 4px">กินไปกี่ที่?</p>
     <div class="portion">${PORTIONS.map(([v, l]) => `<button data-portion="${v}" class="${v === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div class="impact">
-      <h4>${ctx.existing ? '📊 มื้อนี้ในวันนั้น' : `📊 ถ้ากินมื้อนี้ ${isToday ? 'วันนี้' : ''}จะเป็น…`}</h4>
-      ${impactRow('🔥 แคล', 'kcal', before.kcal, cur.kcal, t.cal, 'cal')}
-      ${impactRow('🥩 โปรตีน', 'g', before.protein, cur.protein, t.pro, 'pro')}
+      <h4>${ic('chart')}${ctx.existing ? 'มื้อนี้ในวันนั้น' : `ถ้ากินมื้อนี้ ${isToday ? 'วันนี้' : ''}จะเป็น…`}</h4>
+      ${impactRow(ic('flame') + 'แคล', 'kcal', before.kcal, cur.kcal, t.cal, 'cal')}
+      ${impactRow(ic('drumstick') + 'โปรตีน', 'g', before.protein, cur.protein, t.pro, 'pro')}
     </div>
-    ${a.tip ? `<div class="tip">💡 ${esc(a.tip)}</div>` : ''}
+    ${a.tip ? `<div class="tip">${ic('bulb')}<span>${esc(a.tip)}</span></div>` : ''}
     ${itemsHtml ? `<details ${a.items.length <= 4 ? 'open' : ''}><summary class="small muted">รายละเอียดในจาน</summary>${itemsHtml}</details>` : ''}
     <p class="small muted" style="margin:14px 0 6px">มื้อ</p>
-    <div class="mealtype">${Object.entries(MEAL_TYPES).map(([v, l]) => `<button data-type="${v}" class="${v === ctx.type ? 'on' : ''}">${l}</button>`).join('')}</div>
-    ${!ctx.editing ? '<button class="btn plain block" id="rsEdit">✏️ แก้ไขตัวเลข</button>' : ''}
-    <button class="btn primary block" id="rsSave">${ctx.existing ? '💾 บันทึกการแก้ไข' : '✅ บันทึกว่ากินมื้อนี้'}</button>
-    ${ctx.existing ? '<button class="btn danger block" id="rsDel">🗑️ ลบมื้อนี้</button>' : ''}
+    <div class="mealtype">${Object.keys(MEAL_TYPES).map(v => `<button data-type="${v}" class="${v === ctx.type ? 'on' : ''}">${mealLabel(v)}</button>`).join('')}</div>
+    ${!ctx.editing ? `<button class="btn plain block" id="rsEdit">${ic('pencil')}แก้ไขตัวเลข</button>` : ''}
+    <button class="btn primary block" id="rsSave">${ic('check')}${ctx.existing ? 'บันทึกการแก้ไข' : 'บันทึกว่ากินมื้อนี้'}</button>
+    ${ctx.existing ? `<button class="btn danger block" id="rsDel">${ic('trash')}ลบมื้อนี้</button>` : ''}
     <button class="btn plain block" id="rsCancel">${ctx.existing ? 'ปิด' : 'ยังไม่กิน / ยกเลิก'}</button>
   `);
 
@@ -687,7 +689,7 @@ function showResult(ctx) {
     if (i >= 0) state.meals[i] = meal; else state.meals.push(meal);
     closeSheet(); renderAll();
     switchTab('today');
-    toast(ctx.existing ? 'บันทึกการแก้ไขแล้ว' : `บันทึกแล้ว +${fmt(meal.kcal)} kcal, +${fmt(meal.protein)} g โปรตีน 🎉`);
+    toast(ctx.existing ? 'บันทึกการแก้ไขแล้ว' : `บันทึกแล้ว +${fmt(meal.kcal)} kcal, +${fmt(meal.protein)} g โปรตีน`);
   };
 }
 
@@ -710,8 +712,8 @@ function openMeal(id) {
 // ---------------- render: today ----------------
 function mealCard(m) {
   return `<button class="meal" data-meal="${m.id}">
-    ${m.thumb ? `<img src="${m.thumb}" alt="">` : `<div class="noimg">🍽️</div>`}
-    <div class="info"><div class="name">${esc(m.name)}</div><div class="meta">${MEAL_TYPES[m.type] || ''} · ${timeStr(m.time)}${m.portion && m.portion !== 1 ? ` · ×${m.portion}` : ''}</div></div>
+    ${m.thumb ? `<img src="${m.thumb}" alt="">` : `<div class="noimg">${ic('utensils')}</div>`}
+    <div class="info"><div class="name">${esc(m.name)}</div><div class="meta">${mealLabel(m.type)} · ${timeStr(m.time)}${m.portion && m.portion !== 1 ? ` · ×${m.portion}` : ''}</div></div>
     <div class="nums"><div class="k">${fmt(m.kcal)}</div><div class="p">P ${fmt(m.protein)} g</div></div>
   </button>`;
 }
@@ -723,7 +725,7 @@ function renderToday() {
   const s = totalsFor(key);
   const h = now.getHours();
   $('#todayLabel').textContent = thaiDate(now);
-  $('#greet').textContent = h < 11 ? 'อรุณสวัสดิ์ ☀️' : h < 17 ? 'สวัสดีตอนบ่าย 🌤️' : 'สวัสดีตอนเย็น 🌙';
+  $('#greet').innerHTML = (h < 11 ? 'อรุณสวัสดิ์' : h < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น') + ic(h >= 5 && h < 18 ? 'sun' : 'moon', 'greet-ic');
 
   const left = t.cal - s.kcal;
   const p = pct(s.kcal, t.cal);
@@ -741,20 +743,20 @@ function renderToday() {
   $('#macroMini').textContent = s.n ? `คาร์บ ${fmt(s.carbs)} g · ไขมัน ${fmt(s.fat)} g` : '';
 
   let hint;
-  if (!s.n) hint = '📸 ยังไม่ได้บันทึกมื้อไหนเลย แชะรูปอาหารมื้อแรกกันเลย!';
-  else if (left < 0) hint = `⚠️ วันนี้เกินเป้าแล้ว ${fmt(-left)} kcal — มื้อต่อไปเน้นผักและโปรตีนไม่ติดมัน`;
+  if (!s.n) hint = 'ยังไม่ได้บันทึกมื้อไหนเลย ถ่ายรูปอาหารมื้อแรกกันเลย!';
+  else if (left < 0) hint = `วันนี้เกินเป้าแล้ว ${fmt(-left)} kcal — มื้อต่อไปเน้นผักและโปรตีนไม่ติดมัน`;
   else {
     const proLeft = t.pro - s.protein;
     hint = proLeft > 0
-      ? `ยังกินได้อีก ${fmt(left)} kcal และควรได้โปรตีนอีก ${fmt(proLeft)} g 💪`
-      : `โปรตีนครบแล้ว 👏 ยังกินได้อีก ${fmt(left)} kcal`;
+      ? `ยังกินได้อีก ${fmt(left)} kcal และควรได้โปรตีนอีก ${fmt(proLeft)} g`
+      : `โปรตีนครบแล้ว ยังกินได้อีก ${fmt(left)} kcal`;
   }
   $('#dayHint').textContent = hint;
 
   const meals = state.meals.filter(m => m.date === key).sort((a, b) => a.time.localeCompare(b.time));
   $('#mealList').innerHTML = meals.length
     ? meals.map(mealCard).join('')
-    : `<div class="empty"><div class="e">🍽️</div>ยังไม่มีมื้ออาหารวันนี้</div>`;
+    : `<div class="empty"><div class="e">${ic('utensils')}</div>ยังไม่มีมื้ออาหารวันนี้</div>`;
 }
 
 // ---------------- render: history ----------------
@@ -797,12 +799,12 @@ function renderHistory() {
         <span class="muted">▾</span>
       </button>
       <div class="day-bars">
-        <div>🔥 ${pct(s.kcal, tg.cal)}%<div class="bar" style="background:var(--orange-soft)"><div class="bar-fill ${s.kcal > tg.cal ? 'over' : 'cal'}" style="width:${Math.min(100, pct(s.kcal, tg.cal))}%"></div></div></div>
-        <div>🥩 ${pct(s.protein, tg.pro)}%<div class="bar"><div class="bar-fill protein" style="width:${Math.min(100, pct(s.protein, tg.pro))}%"></div></div></div>
+        <div class="lbl-ic cal">${ic('flame')}${pct(s.kcal, tg.cal)}%<div class="bar" style="background:var(--orange-soft)"><div class="bar-fill ${s.kcal > tg.cal ? 'over' : 'cal'}" style="width:${Math.min(100, pct(s.kcal, tg.cal))}%"></div></div></div>
+        <div class="lbl-ic pro">${ic('drumstick')}${pct(s.protein, tg.pro)}%<div class="bar"><div class="bar-fill protein" style="width:${Math.min(100, pct(s.protein, tg.pro))}%"></div></div></div>
       </div>
       <div class="day-meals" data-meals="${k}" hidden>${ms.map(mealCard).join('')}</div>
     </div>`;
-  }).join('') : `<div class="empty"><div class="e">📅</div>ยังไม่มีประวัติ</div>`;
+  }).join('') : `<div class="empty"><div class="e">${ic('calendar')}</div>ยังไม่มีประวัติ</div>`;
 }
 
 // ---------------- render: profile ----------------
@@ -835,10 +837,10 @@ function renderProfile() {
   $('#pfCustomPro').value = p.customPro || '';
   $('#pfModel').value = state.settings.model;
   $('#aiStatus').innerHTML = state.settings.apiKey
-    ? '✅ <b>ใช้คีย์ของคุณเอง</b> — ดูรูปอาหารได้'
+    ? `<span class="status ok">${ic('check-circle')}<b>ใช้คีย์ของคุณเอง</b></span> ดูรูปอาหารได้`
     : PROXY_URL
-      ? '✅ <b>พร้อมใช้งาน</b> — ถ่ายรูปอาหารได้เลย ไม่ต้องตั้งค่าอะไร'
-      : '⚪ <b>ยังไม่ได้เชื่อม AI</b> — ตอนนี้เลือกเมนูจากรายการได้ ถ้าจะให้ดูรูปอาหาร ทำ 2 ขั้นตอนด้านล่าง';
+      ? `<span class="status ok">${ic('check-circle')}<b>พร้อมใช้งาน</b></span> ถ่ายรูปอาหารได้เลย ไม่ต้องตั้งค่าอะไร`
+      : `<span class="status">${ic('info')}<b>ยังไม่ได้เชื่อม AI</b></span> ตอนนี้เลือกเมนูจากรายการได้ ถ้าจะให้ดูรูปอาหาร ทำ 2 ขั้นตอนด้านล่าง`;
   // With the shared AI a personal key is optional, so keep it folded away unless one is set.
   $('#pfOwnKey').open = !PROXY_URL || !!state.settings.apiKey;
   $('#pfOwnKey summary').textContent = PROXY_URL ? 'ใช้คีย์ของตัวเองแทน (ไม่จำเป็น)' : 'เชื่อมต่อ AI';
@@ -994,7 +996,7 @@ function startMain() {
     LS.set('profile', state.profile);
     if (state.profile.weight !== prev) logWeight(state.profile.weight);
     renderProfile(); renderToday();
-    toast('บันทึกแล้ว เป้าหมายใหม่ ' + fmt(targets().cal) + ' kcal ✅');
+    toast('บันทึกแล้ว เป้าหมายใหม่ ' + fmt(targets().cal) + ' kcal');
   };
   $('#pfModel').onchange = () => {
     state.settings.model = $('#pfModel').value;
@@ -1008,10 +1010,10 @@ function startMain() {
     renderProfile(); toast('ลบคีย์แล้ว');
   };
   $('#pfExport').onclick = () => {
-    const data = { app: 'CalCha', version: 1, exported: new Date().toISOString(), profile: state.profile, weights: state.weights, meals: state.meals };
+    const data = { app: 'NubCal', version: 1, exported: new Date().toISOString(), profile: state.profile, weights: state.weights, meals: state.meals };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    a.download = `calcha-backup-${dateKey()}.json`;
+    a.download = `nubcal-backup-${dateKey()}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
@@ -1021,7 +1023,7 @@ function startMain() {
     if (!f) return;
     try {
       const d = JSON.parse(await f.text());
-      if (d.app !== 'CalCha' || !Array.isArray(d.meals)) throw 0;
+      if (!['NubCal', 'CalCha'].includes(d.app) || !Array.isArray(d.meals)) throw 0;
       if (!confirm(`นำเข้า ${d.meals.length} มื้อ? (ข้อมูลเดิมที่ id ซ้ำจะถูกแทนที่)`)) return;
       for (const m of d.meals) await DB.put(m);
       if (d.profile) { state.profile = d.profile; LS.set('profile', d.profile); }
@@ -1047,6 +1049,7 @@ function startMain() {
 
 // ---------------- boot ----------------
 (async function boot() {
+  hydrateIcons();
   try { state.meals = await DB.all(); } catch { state.meals = []; }
   if (state.profile) startMain(); else startOnboarding();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

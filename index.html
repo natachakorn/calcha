@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>CalCha แคลแชะ</title>
+  <title>นับแคล NubCal</title>
   <meta name="description" content="ถ่ายรูปอาหาร แล้วรู้แคลอรี่และโปรตีนทันที">
   <meta name="theme-color" content="#1fae7d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="CalCha">
+  <meta name="apple-mobile-web-app-title" content="NubCal">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-32.png">
@@ -24,7 +24,7 @@
     <section id="onboarding" class="screen" hidden>
       <div class="ob-head">
         <img src="icons/icon-192.png" alt="" class="ob-logo">
-        <h1>CalCha <span>แคลแชะ</span></h1>
+        <h1>นับแคล <span>NubCal</span></h1>
         <p class="muted">แชะรูปอาหาร รู้แคลอรี่ &amp; โปรตีนทันที</p>
         <div class="dots" id="obDots"></div>
       </div>
@@ -32,8 +32,8 @@
       <div class="ob-step" data-step="0">
         <h2>คุณเป็น…</h2>
         <div class="choice-grid two">
-          <button class="choice" data-field="sex" data-value="male"><span class="emoji">👨</span>ชาย</button>
-          <button class="choice" data-field="sex" data-value="female"><span class="emoji">👩</span>หญิง</button>
+          <button class="choice" data-field="sex" data-value="male"><span class="emoji"><i data-i="mars"></i></span>ชาย</button>
+          <button class="choice" data-field="sex" data-value="female"><span class="emoji"><i data-i="venus"></i></span>หญิง</button>
         </div>
       </div>
 
@@ -74,19 +74,19 @@
       <div class="ob-step" data-step="2">
         <h2>ปกติขยับตัวแค่ไหน?</h2>
         <div class="choice-list">
-          <button class="choice row" data-field="activity" data-value="1.2"><span class="emoji">🛋️</span><b>นั่งเป็นหลัก</b><small>ทำงานออฟฟิศ แทบไม่ออกกำลังกาย</small></button>
-          <button class="choice row" data-field="activity" data-value="1.375"><span class="emoji">🚶</span><b>ขยับบ้าง</b><small>เดินบ่อย / ออกกำลังกาย 1–3 วันต่อสัปดาห์</small></button>
-          <button class="choice row" data-field="activity" data-value="1.55"><span class="emoji">🏃</span><b>ออกกำลังกายประจำ</b><small>3–5 วันต่อสัปดาห์</small></button>
-          <button class="choice row" data-field="activity" data-value="1.725"><span class="emoji">🏋️</span><b>หนักมาก</b><small>ออกกำลังกายเกือบทุกวัน / งานใช้แรง</small></button>
+          <button class="choice row" data-field="activity" data-value="1.2"><span class="emoji"><i data-i="sofa"></i></span><b>นั่งเป็นหลัก</b><small>ทำงานออฟฟิศ แทบไม่ออกกำลังกาย</small></button>
+          <button class="choice row" data-field="activity" data-value="1.375"><span class="emoji"><i data-i="walk"></i></span><b>ขยับบ้าง</b><small>เดินบ่อย / ออกกำลังกาย 1–3 วันต่อสัปดาห์</small></button>
+          <button class="choice row" data-field="activity" data-value="1.55"><span class="emoji"><i data-i="run"></i></span><b>ออกกำลังกายประจำ</b><small>3–5 วันต่อสัปดาห์</small></button>
+          <button class="choice row" data-field="activity" data-value="1.725"><span class="emoji"><i data-i="dumbbell"></i></span><b>หนักมาก</b><small>ออกกำลังกายเกือบทุกวัน / งานใช้แรง</small></button>
         </div>
       </div>
 
       <div class="ob-step" data-step="3">
         <h2>เป้าหมายของคุณ</h2>
         <div class="choice-list">
-          <button class="choice row" data-field="goal" data-value="lose"><span class="emoji">📉</span><b>ลดน้ำหนัก</b><small>กินน้อยกว่าที่ใช้ประมาณ 500 kcal</small></button>
-          <button class="choice row" data-field="goal" data-value="maintain"><span class="emoji">⚖️</span><b>รักษาน้ำหนัก</b><small>กินเท่าที่ร่างกายใช้</small></button>
-          <button class="choice row" data-field="goal" data-value="gain"><span class="emoji">💪</span><b>เพิ่มกล้าม / น้ำหนัก</b><small>กินมากกว่าที่ใช้ประมาณ 300 kcal</small></button>
+          <button class="choice row" data-field="goal" data-value="lose"><span class="emoji"><i data-i="trend-down"></i></span><b>ลดน้ำหนัก</b><small>กินน้อยกว่าที่ใช้ประมาณ 500 kcal</small></button>
+          <button class="choice row" data-field="goal" data-value="maintain"><span class="emoji"><i data-i="scale"></i></span><b>รักษาน้ำหนัก</b><small>กินเท่าที่ร่างกายใช้</small></button>
+          <button class="choice row" data-field="goal" data-value="gain"><span class="emoji"><i data-i="trend-up"></i></span><b>เพิ่มกล้าม / น้ำหนัก</b><small>กินมากกว่าที่ใช้ประมาณ 300 kcal</small></button>
         </div>
       </div>
 
@@ -100,13 +100,13 @@
       </div>
 
       <div class="ob-step" data-step="5">
-        <h2>เรียบร้อย! 🎉</h2>
+        <h2 class="with-ic"><i data-i="sparkles" class="accent"></i>เรียบร้อย!</h2>
         <p class="muted">ทุกวันคุณควรได้รับ</p>
         <div class="target-cards" id="obTargets"></div>
         <button class="btn primary block" id="obFinish">เริ่มใช้งาน</button>
       </div>
 
-      <button class="ob-back" id="obBack" aria-label="ย้อนกลับ">‹ ย้อนกลับ</button>
+      <button class="ob-back" id="obBack" aria-label="ย้อนกลับ"><i data-i="chevron-left"></i>ย้อนกลับ</button>
     </section>
 
     <!-- ============ MAIN ============ -->
@@ -134,12 +134,12 @@
           </div>
           <div class="sum-lines">
             <div class="sum-line">
-              <span class="muted small">🔥 แคลอรี่</span>
+              <span class="lbl-ic cal"><i data-i="flame"></i>แคลอรี่</span>
               <b id="calText">0 / 0</b>
               <span class="pct" id="calPct">0%</span>
             </div>
             <div class="sum-line">
-              <span class="muted small">🥩 โปรตีน</span>
+              <span class="lbl-ic pro"><i data-i="drumstick"></i>โปรตีน</span>
               <b id="proText">0 / 0 g</b>
               <div class="bar"><div class="bar-fill protein" id="proBar"></div></div>
             </div>
@@ -149,9 +149,9 @@
         <p class="hint" id="dayHint"></p>
 
         <div class="actions">
-          <button class="action cam" id="btnCamera"><span class="ico">📷</span>ถ่ายรูป</button>
-          <button class="action gal" id="btnGallery"><span class="ico">🖼️</span>เลือกรูป</button>
-          <button class="action txt" id="btnText"><span class="ico">🔍</span>ค้นหาเมนู</button>
+          <button class="action cam" id="btnCamera"><span class="ico"><i data-i="camera"></i></span>ถ่ายรูป</button>
+          <button class="action gal" id="btnGallery"><span class="ico"><i data-i="image"></i></span>เลือกรูป</button>
+          <button class="action txt" id="btnText"><span class="ico"><i data-i="search"></i></span>ค้นหาเมนู</button>
         </div>
         <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
         <input type="file" id="fileGallery" accept="image/*" hidden>
@@ -180,22 +180,22 @@
         <div class="card form">
           <h3>ข้อมูลร่างกาย</h3>
           <div class="seg" data-field="sex">
-            <button data-value="male">👨 ชาย</button>
-            <button data-value="female">👩 หญิง</button>
+            <button data-value="male"><i data-i="mars"></i>ชาย</button>
+            <button data-value="female"><i data-i="venus"></i>หญิง</button>
           </div>
           <div class="stepper-list" id="profileSteppers"></div>
           <label class="lbl">ระดับกิจกรรม</label>
           <select id="pfActivity" class="text-input">
-            <option value="1.2">🛋️ นั่งเป็นหลัก</option>
-            <option value="1.375">🚶 ขยับบ้าง (1–3 วัน/สัปดาห์)</option>
-            <option value="1.55">🏃 ออกกำลังกายประจำ (3–5 วัน)</option>
-            <option value="1.725">🏋️ หนักมาก (เกือบทุกวัน)</option>
+            <option value="1.2">นั่งเป็นหลัก</option>
+            <option value="1.375">ขยับบ้าง (1–3 วัน/สัปดาห์)</option>
+            <option value="1.55">ออกกำลังกายประจำ (3–5 วัน)</option>
+            <option value="1.725">หนักมาก (เกือบทุกวัน)</option>
           </select>
           <label class="lbl">เป้าหมาย</label>
           <div class="seg" data-field="goal">
-            <button data-value="lose">📉 ลด</button>
-            <button data-value="maintain">⚖️ คงที่</button>
-            <button data-value="gain">💪 เพิ่ม</button>
+            <button data-value="lose"><i data-i="trend-down"></i>ลด</button>
+            <button data-value="maintain"><i data-i="scale"></i>คงที่</button>
+            <button data-value="gain"><i data-i="trend-up"></i>เพิ่ม</button>
           </div>
           <details class="custom">
             <summary>กำหนดเป้าหมายเอง (ไม่บังคับ)</summary>
@@ -208,13 +208,13 @@
         </div>
 
         <div class="card">
-          <h3>⚖️ บันทึกน้ำหนัก</h3>
+          <h3 class="with-ic"><i data-i="scale"></i>บันทึกน้ำหนัก</h3>
           <div id="weightChart" class="weight-chart"></div>
           <p class="tiny muted">อัปเดตน้ำหนักด้านบนแล้วกดบันทึก ระบบจะเก็บประวัติให้อัตโนมัติ</p>
         </div>
 
         <div class="card form">
-          <h3>🤖 ตั้งค่า AI</h3>
+          <h3 class="with-ic"><i data-i="sparkles"></i>ตั้งค่า AI</h3>
           <p class="small" id="aiStatus"></p>
           <details class="custom" id="pfOwnKey">
             <summary>ใช้คีย์ของตัวเองแทน (ไม่จำเป็น)</summary>
@@ -234,7 +234,7 @@
         </div>
 
         <div class="card form">
-          <h3>🗂️ ข้อมูล</h3>
+          <h3 class="with-ic"><i data-i="folder"></i>ข้อมูล</h3>
           <div class="row-btns">
             <button class="btn ghost" id="pfExport">ส่งออก (สำรอง)</button>
             <button class="btn ghost" id="pfImport">นำเข้า</button>
@@ -242,13 +242,13 @@
           <input type="file" id="importFile" accept="application/json" hidden>
           <button class="btn danger block" id="pfReset">ลบข้อมูลทั้งหมด</button>
         </div>
-        <p class="tiny muted center">CalCha v1.0 · ค่าที่ได้เป็นการประมาณจาก AI ไม่ใช่คำแนะนำทางการแพทย์</p>
+        <p class="tiny muted center">NubCal v1.1 · ค่าที่ได้เป็นการประมาณจาก AI ไม่ใช่คำแนะนำทางการแพทย์</p>
       </section>
 
       <nav class="bottom-nav">
-        <button data-tab="today" class="active"><span>🏠</span>วันนี้</button>
-        <button data-tab="history"><span>📅</span>ประวัติ</button>
-        <button data-tab="profile"><span>👤</span>ข้อมูลฉัน</button>
+        <button data-tab="today" class="active"><span class="nav-ic"><i data-i="home"></i></span>วันนี้</button>
+        <button data-tab="history"><span class="nav-ic"><i data-i="calendar"></i></span>ประวัติ</button>
+        <button data-tab="profile"><span class="nav-ic"><i data-i="user"></i></span>ข้อมูลฉัน</button>
       </nav>
     </main>
 
@@ -258,6 +258,7 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
+  <script src="icons.js"></script>
   <script src="config.js"></script>
   <script src="foods.js"></script>
   <script src="app.js"></script>

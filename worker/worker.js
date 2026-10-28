@@ -1,4 +1,4 @@
-// CalCha shared-key proxy (Cloudflare Worker).
+// NubCal shared-key proxy (Cloudflare Worker).
 // Holds one Gemini API key as a secret so app users don't need their own.
 // The app POSTs { model, request } and gets Gemini's generateContent response back unchanged.
 //
