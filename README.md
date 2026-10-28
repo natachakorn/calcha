@@ -1,5 +1,8 @@
 # นับแคล NubCal
 
+**ดาวน์โหลดแอป Android:** https://github.com/natachakorn/calcha/releases/latest/download/NubCal.apk  
+**ใช้บนเว็บ:** https://natachakorn.github.io/calcha/
+
 ถ่ายรูปหรือเลือกรูปอาหาร แล้ว AI จะบอกแคลอรี่ โปรตีน คาร์บ และไขมัน พร้อมสรุปว่าวันนี้กินไปแล้วกี่ % ของที่ร่างกายต้องการ
 
 ## AI ที่ใช้
